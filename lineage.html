@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>日本通史 家系図 — 皇室・源氏・徳川</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@300;400;700&display=swap" rel="stylesheet">
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    :root {
+      --bg: #f7f2e8;
+      --bg2: #efe8d8;
+      --text: #2c2014;
+      --text2: #5a4a3a;
+      --gold: #b8963e;
+      --gold2: #d4af5a;
+      --red: #a83a3a;
+      --blue: #3a5a7a;
+      --green: #5a7a4a;
+      --line: #8a7a6a;
+      --node-bg: #faf6ee;
+      --node-border: #c8b89a;
+      --panel-bg: #faf8f2;
+      --shogun-bg: #fdf6e3;
+      --shogun-border: #c4a030;
+      --female-bg: #faf0f0;
+      --adopted-border: #888;
+      --font: 'Noto Serif JP', serif;
+    }
+
+    [data-theme="kobun"] {
+      --bg: #3a3228;
+      --bg2: #2a2520;
+      --text: #d4c8a8;
+      --text2: #a09070;
+      --gold: #c4a040;
+      --gold2: #a08030;
+      --red: #c06040;
+      --blue: #6090b0;
+      --green: #80a060;
+      --line: #706050;
+      --node-bg: #4a3e30;
+      --node-border: #6a5a40;
+      --panel-bg: #3a3228;
+      --shogun-bg: #504020;
+      --shogun-border: #c4a030;
+      --female-bg: #4a3038;
+      --adopted-border: #706050;
+    }
+
+    [data-theme="modern"] {
+      --bg: #f0f4f8;
+      --bg2: #e2e8f0;
+      --text: #1a202c;
+      --text2: #4a5568;
+      --gold: #d69e2e;
+      --gold2: #ecc94b;
+      --red: #e53e3e;
+      --blue: #3182ce;
+      --green: #38a169;
+      --line: #a0aec0;
+      --node-bg: #fff;
+      --node-border: #e2e8f0;
+      --panel-bg: #fff;
+      --shogun-bg: #fffff0;
+      --shogun-border: #d69e2e;
+      --female-bg: #fff5f5;
+      --adopted-border: #a0aec0;
+      --font: 'Noto Serif JP', sans-serif;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+      height: 100vh
+    }
+
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh
+    }
+
+    #toolbar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 8px 16px;
+      background: var(--bg2);
+      border-bottom: 2px solid var(--gold);
+      z-index: 10
+    }
+
+    .logo {
+      font-size: 1.2em;
+      font-weight: 700;
+      color: var(--gold);
+      white-space: nowrap
+    }
+
+    .controls {
+      display: flex;
+      gap: 8px;
+      align-items: center
+    }
+
+    .controls select,
+    .controls input {
+      font-family: var(--font);
+      padding: 4px 8px;
+      border: 1px solid var(--node-border);
+      border-radius: 4px;
+      background: var(--node-bg);
+      color: var(--text);
+      font-size: 0.85em
+    }
+
+    #search-input {
+      width: 180px
+    }
+
+    #filter-bar {
+      display: flex;
+      gap: 6px;
+      padding: 6px 16px;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--node-border);
+      flex-wrap: wrap;
+      z-index: 10
+    }
+
+    .attr-chip {
+      font-family: var(--font);
+      font-size: 0.75em;
+      padding: 3px 10px;
+      border: 1px solid var(--node-border);
+      border-radius: 12px;
+      background: var(--bg);
+      color: var(--text2);
+      cursor: pointer;
+      transition: all .2s
+    }
+
+    .attr-chip.active {
+      background: var(--gold);
+      color: #fff;
+      border-color: var(--gold)
+    }
+
+    #tree-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden
+    }
+
+    #tree-svg {
+      width: 100%;
+      height: 100%;
+      cursor: grab
+    }
+
+    #tree-svg:active {
+      cursor: grabbing
+    }
+
+    #detail-panel {
+      position: absolute;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: 320px;
+      background: var(--bg);
+      border-left: 1px solid var(--node-border);
+      box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
+      padding: 20px;
+      overflow-y: auto;
+      transform: translateX(100%);
+      transition: transform 0.3s ease;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #detail-panel.active {
+      transform: translateX(0);
+    }
+
+    .detail-name {
+      font-size: 1.3em;
+      font-weight: 700;
+      margin: 8px 0;
+      color: var(--gold);
+      writing-mode: vertical-rl;
+      height: auto;
+      min-height: 100px
+    }
+
+    .detail-section {
+      margin: 12px 0
+    }
+
+    .detail-section h3 {
+      font-size: 0.85em;
+      color: var(--text2);
+      border-bottom: 1px solid var(--node-border);
+      padding-bottom: 4px;
+      margin-bottom: 6px
+    }
+
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 3px 0;
+      font-size: 0.85em
+    }
+
+    .detail-label {
+      color: var(--text2)
+    }
+
+    .spouse-item {
+      padding: 4px 8px;
+      margin: 3px 0;
+      border-radius: 4px;
+      font-size: 0.8em
+    }
+
+    .spouse-seishitsu {
+      background: rgba(184, 150, 62, 0.15);
+      border-left: 3px solid var(--gold)
+    }
+
+    .spouse-sokushitsu {
+      background: rgba(100, 100, 100, 0.1);
+      border-left: 3px solid var(--line)
+    }
+
+    #close-panel {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: none;
+      border: none;
+      font-size: 1.5em;
+      cursor: pointer;
+      color: var(--text2)
+    }
+
+    .detail-name {
+      font-size: 1.3em;
+      font-weight: 700;
+      margin: 8px 0;
+      color: var(--gold);
+      writing-mode: vertical-rl;
+      height: auto;
+      min-height: 100px
+    }
+
+    .detail-section {
+      margin: 12px 0
+    }
+
+    .detail-section h3 {
+      font-size: 0.85em;
+      color: var(--text2);
+      border-bottom: 1px solid var(--node-border);
+      padding-bottom: 4px;
+      margin-bottom: 6px
+    }
+
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 3px 0;
+      font-size: 0.85em
+    }
+
+    .detail-label {
+      color: var(--text2)
+    }
+
+    .spouse-item {
+      padding: 4px 8px;
+      margin: 3px 0;
+      border-radius: 4px;
+      font-size: 0.8em
+    }
+
+    .spouse-seishitsu {
+      background: rgba(184, 150, 62, 0.15);
+      border-left: 3px solid var(--gold)
+    }
+
+    .spouse-sokushitsu {
+      background: rgba(100, 100, 100, 0.1);
+      border-left: 3px solid var(--line)
+    }
+
+    .node-group {
+      cursor: pointer
+    }
+
+    .node-rect {
+      fill: var(--node-bg);
+      stroke: var(--node-border);
+      stroke-width: 1.5;
+      rx: 6;
+      transition: all .2s
+    }
+
+    .node-group:hover .node-rect {
+      filter: brightness(0.95);
+      stroke: var(--gold)
+    }
+
+    .node-shogun .node-rect {
+      fill: var(--shogun-bg);
+      stroke: var(--shogun-border);
+      stroke-width: 2.5
+    }
+
+    .node-female .node-rect {
+      fill: var(--female-bg)
+    }
+
+    .node-adopted .node-rect {
+      stroke-dasharray: 6 3;
+      stroke: var(--adopted-border)
+    }
+
+    .shogun-badge {
+      font-size: 9px;
+      fill: #fff;
+      text-anchor: middle
+    }
+
+    .shogun-badge-bg {
+      fill: var(--gold);
+      rx: 3
+    }
+
+    .emperor-badge-bg {
+      fill: #7B2D8E;
+      rx: 3
+    }
+
+    .kamakura-badge-bg {
+      fill: #1a5276;
+      rx: 3
+    }
+
+    .muromachi-badge-bg {
+      fill: #1e6e3e;
+      rx: 3
+    }
+
+    .nanke-badge-bg {
+      fill: #d35400;
+      rx: 3
+    }
+
+    .hokke-badge-bg {
+      fill: #2980b9;
+      rx: 3
+    }
+
+    .shikike-badge-bg {
+      fill: #27ae60;
+      rx: 3
+    }
+
+    .kyoke-badge-bg {
+      fill: #8e44ad;
+      rx: 3
+    }
+
+    .node-name {
+      font-family: var(--font);
+      font-size: 13px;
+      font-weight: 700;
+      fill: var(--text);
+      text-anchor: middle
+    }
+
+    .node-attr {
+      font-family: var(--font);
+      font-size: 10px;
+      fill: var(--text2);
+      text-anchor: middle
+    }
+
+    .link-real {
+      fill: none;
+      stroke: var(--line);
+      stroke-width: 1.5
+    }
+
+    .link-adopted {
+      fill: none;
+      stroke: var(--adopted-border);
+      stroke-width: 1.5;
+      stroke-dasharray: 6 3
+    }
+
+    .link-marriage-sei {
+      fill: none;
+      stroke: var(--gold);
+      stroke-width: 2
+    }
+
+    .link-marriage-soku {
+      fill: none;
+      stroke: var(--line);
+      stroke-width: 1;
+      stroke-dasharray: 4 2
+    }
+
+    .spouse-rect {
+      fill: var(--node-bg);
+      stroke: var(--node-border);
+      stroke-width: 1;
+      rx: 4;
+      opacity: 0.9
+    }
+
+    .spouse-name {
+      font-family: var(--font);
+      font-size: 10px;
+      fill: var(--text2);
+      text-anchor: middle
+    }
+
+    .collapse-btn {
+      fill: var(--gold);
+      cursor: pointer;
+      font-size: 11px;
+      font-family: var(--font)
+    }
+
+    #legend {
+      position: absolute;
+      bottom: 12px;
+      left: 12px;
+      background: var(--panel-bg);
+      border: 1px solid var(--node-border);
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 0.75em;
+      z-index: 10;
+      opacity: 0.9
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 3px 0
+    }
+
+    .legend-line {
+      width: 30px;
+      height: 0;
+      display: inline-block
+    }
+
+    .highlight-node .node-rect {
+      stroke: var(--red) !important;
+      stroke-width: 3 !important
+    }
+
+    .search-results {
+      position: absolute;
+      background: var(--panel-bg);
+      border: 1px solid var(--node-border);
+      border-radius: 4px;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 30;
+      font-size: 0.85em
+    }
+
+    .search-item {
+      padding: 6px 12px;
+      cursor: pointer
+    }
+
+    .search-item:hover {
+      background: var(--bg2)
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app" data-theme="wafuu">
+    <header id="toolbar">
+      <div class="logo">🏯 日本通史 家系図 — 皇室・源氏・徳川</div>
+      <div class="controls">
+        <label>テーマ: <select id="theme-select">
+            <option value="wafuu">和風</option>
+            <option value="kobun">古文書</option>
+            <option value="modern">現代</option>
+            <option value="kamatari">中臣鎌足(藤原鎌足)</option>
+            <option value="michinaga">藤原道長</option>
+            <option value="tadamichi">藤原忠通</option>
+          </select></label>
+        <label>移動: <select id="jump-select">
+            <option value="">選択...</option>
+            <option value="jimmu">神武天皇</option>
+            <option value="sujin">崇神天皇</option>
+            <option value="ojin">応神天皇</option>
+            <option value="keitai">継体天皇</option>
+            <option value="kinmei">欽明天皇</option>
+            <option value="tenji">天智天皇</option>
+            <option value="kanmu">桓武天皇</option>
+            <option value="seiwa">清和天皇</option>
+            <option value="tsunemoto">源経基</option>
+            <option value="yoshiie">源義家</option>
+            <option value="yoritomo">源頼朝</option>
+            <option value="yoshikuni">源義国</option>
+            <option value="yoshishige">新田義重</option>
+            <option value="takauji">足利尊氏</option>
+            <option value="chikauj_m">松平親氏</option>
+            <option value="ieyasu">徳川家康</option>
+            <option value="koko">光孝天皇</option>
+            <option value="meiji">明治天皇</option>
+            <option value="naruhito">今上天皇</option>
+          </select></label>
+        <button id="btn-expand-all" style="margin-left:15px; padding:2px 8px; cursor:pointer;">すべて展開</button>
+        <button id="btn-collapse-all" style="margin-left:5px; padding:2px 8px; cursor:pointer;">すべて折りたたむ</button>
+      </div>
+      <div style="position:relative">
+        <input type="text" id="search-input" placeholder="🔍 人物を検索...">
+        <div id="search-results" class="search-results" style="display:none"></div>
+      </div>
+    </header>
+    <div id="filter-bar">
+      <span style="font-size:0.8em;color:var(--text2)">表示:</span>
+      <button class="attr-chip active" data-attr="years">生没年</button>
+      <button class="attr-chip active" data-attr="title">官位</button>
+      <button class="attr-chip" data-attr="domain">領地</button>
+      <button class="attr-chip" data-attr="mother">母</button>
+      <button class="attr-chip" data-attr="court">位階</button>
+      <button class="attr-chip active" data-attr="spouses">配偶者</button>
+      <button class="attr-chip" data-attr="note">備考</button>
+    </div>
+    <div id="tree-container">
+      <svg id="tree-svg"></svg>
+      <div id="detail-panel">
+        <div style="display:flex; justify-content:flex-end;">
+          <button
+            onclick="document.getElementById('detail-panel').classList.remove('active'); state.selected=null; updateAll();"
+            style="background:none; border:none; color:var(--text2); cursor:pointer; font-size:1.2em;">×</button>
+        </div>
+        <div id="panel-content">人物をクリックすると詳細が表示されます。</div>
+      </div>
+    </div>
+    <div id="legend">
+      <div style="font-weight:700;margin-bottom:4px">凡例</div>
+      <div class="legend-item"><svg width="30" height="10">
+          <line x1="0" y1="5" x2="30" y2="5" stroke="var(--line)" stroke-width="2" />
+        </svg> 実子</div>
+      <div class="legend-item"><svg width="30" height="10">
+          <line x1="0" y1="5" x2="30" y2="5" stroke="var(--adopted-border)" stroke-width="2" stroke-dasharray="6 3" />
+        </svg> 養子</div>
+      <div class="legend-item"><svg width="30" height="10">
+          <line x1="0" y1="5" x2="30" y2="5" stroke="var(--gold)" stroke-width="2.5" />
+        </svg> 正室</div>
+      <div class="legend-item"><svg width="30" height="10">
+          <line x1="0" y1="5" x2="30" y2="5" stroke="var(--line)" stroke-width="1" stroke-dasharray="4 2" />
+        </svg> 側室</div>
+      <div class="legend-item"><svg width="16" height="16">
+          <rect width="14" height="14" x="1" y="1" fill="var(--shogun-bg)" stroke="var(--shogun-border)"
+            stroke-width="2" rx="3" />
+        </svg> 将軍</div>
+    </div>
+  </div>
+  <script>
+    const DATA = {"id":"jimmu","name":"神武天皇","b":-660,"d":-585,"g":"M","title":"初代天皇","note":"建国神話・日向より東征","ch":[{"id":"suizei","name":"綏靖天皇","b":-632,"d":-549,"g":"M","title":"第2代天皇","ch":[{"id":"annei","name":"安寧天皇","b":-577,"d":-511,"g":"M","title":"第3代天皇","ch":[{"id":"itoku","name":"懿徳天皇","b":-553,"d":-477,"g":"M","title":"第4代天皇","ch":[{"id":"kosho","name":"孝昭天皇","b":-506,"d":-393,"g":"M","title":"第5代天皇","ch":[{"id":"koan","name":"孝安天皇","b":-427,"d":-291,"g":"M","title":"第6代天皇","ch":[{"id":"korei","name":"孝霊天皇","b":-342,"d":-215,"g":"M","title":"第7代天皇","ch":[{"id":"kogen","name":"孝元天皇","b":-273,"d":-158,"g":"M","title":"第8代天皇","ch":[{"id":"kaika","name":"開化天皇","b":-208,"d":-98,"g":"M","title":"第9代天皇","ch":[{"id":"sujin","name":"崇神天皇","b":-148,"d":-30,"g":"M","title":"第10代天皇","note":"御肇国天皇・実在可能性","ch":[{"id":"suinin","name":"垂仁天皇","b":-69,"d":70,"g":"M","title":"第11代天皇","ch":[{"id":"keiko","name":"景行天皇","b":13,"d":130,"g":"M","title":"第12代天皇","ch":[{"id":"seimu","name":"成務天皇","b":84,"d":190,"g":"M","title":"第13代天皇","ch":[],"sp":[]},{"id":"yamato","name":"日本武尊","b":72,"d":114,"g":"M","title":"皇子","note":"東国征伐の英雄・非即位","ch":[{"id":"chuai","name":"仲哀天皇","b":149,"d":200,"g":"M","title":"第14代天皇","sp":[{"name":"神功皇后","t":"正室","note":"三韓征伐伝説"}],"ch":[{"id":"ojin","name":"応神天皇","b":200,"d":310,"g":"M","title":"第15代天皇","note":"八幡神・実在最古級","mother":"神功皇后","ch":[{"id":"nintoku","name":"仁徳天皇","b":257,"d":399,"g":"M","title":"第16代天皇","note":"仁徳天皇陵","ch":[{"id":"richu","name":"履中天皇","b":336,"d":405,"g":"M","title":"第17代天皇","ch":[{"id":"ichinobe","name":"市辺押磐皇子","g":"M","title":"皇子","note":"雄略に殺害される","ch":[{"id":"ninken","name":"仁賢天皇","b":449,"d":498,"g":"M","title":"第24代天皇","ch":[{"id":"buretsu","name":"武烈天皇","b":489,"d":507,"g":"M","title":"第25代天皇","note":"嗣子なし・越前より継体を迎える","ch":[],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]},{"id":"ingyou","name":"允恭天皇","b":376,"d":453,"g":"M","title":"第19代天皇","ch":[{"id":"yuryaku","name":"雄略天皇","b":418,"d":479,"g":"M","title":"第21代天皇","note":"倭王武・大悪天皇","ch":[{"id":"seinei","name":"清寧天皇","b":444,"d":484,"g":"M","title":"第22代天皇","note":"嗣子なし","ch":[],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]},{"id":"wakanuke","name":"稚野毛二派皇子","g":"M","title":"皇子","note":"継体天皇の祖","ch":[{"id":"ohoho","name":"意富富杼王","g":"M","title":"皇族","ch":[{"id":"ohi","name":"乎非王","g":"M","title":"皇族","ch":[{"id":"hikoshito","name":"彦主人王","g":"M","title":"皇族","ch":[{"id":"keitai","name":"継体天皇","b":450,"d":531,"g":"M","title":"第26代天皇","note":"応神五世孫・越前から即位","ch":[{"id":"kinmei","name":"欽明天皇","b":509,"d":571,"g":"M","title":"第29代天皇","note":"仏教伝来","ch":[{"id":"bidatsu","name":"敏達天皇","b":538,"d":585,"g":"M","title":"第30代天皇","ch":[{"id":"oshisaka","name":"押坂彦人大兄皇子","g":"M","title":"皇子","ch":[{"id":"jomei","name":"舒明天皇","b":593,"d":641,"g":"M","title":"第34代天皇","ch":[{"id":"tenji","name":"天智天皇","b":626,"d":672,"g":"M","title":"第38代天皇","note":"大化改新・近江令","ch":[{"id":"shiki","name":"施基親王","b":668,"d":716,"g":"M","title":"親王(志貴皇子)","note":"光仁天皇の父・万葉歌人","ch":[{"id":"konin","name":"光仁天皇","b":709,"d":782,"g":"M","title":"第49代天皇","note":"天智系復帰","ch":[{"id":"kanmu","name":"桓武天皇","b":737,"d":806,"g":"M","title":"第50代天皇","note":"平安遷都・桓武平氏の祖","sp":[{"name":"藤原乙牟漏","t":"正室"}],"ch":[{"id":"saga","name":"嵯峨天皇","b":786,"d":842,"g":"M","title":"第52代天皇","note":"薬子の変・嵯峨源氏の祖","ch":[{"id":"ninmyo","name":"仁明天皇","b":810,"d":850,"g":"M","title":"第54代天皇","ch":[{"id":"montoku","name":"文徳天皇","b":827,"d":858,"g":"M","title":"第55代天皇","ch":[{"id":"seiwa","name":"清和天皇","b":850,"d":881,"g":"M","title":"第56代天皇","note":"清和源氏の祖・徳川家の遠祖とされる","ch":[{"id":"yozei","name":"陽成天皇","b":869,"d":949,"g":"M","title":"第57代天皇","note":"暴虐により廃位","ch":[],"sp":[]},{"id":"sadazumi","name":"貞純親王","b":873,"d":916,"g":"M","title":"親王","note":"清和源氏の祖・源経基の父","ch":[{"id":"tsunemoto","name":"源経基","b":897,"d":961,"g":"M","title":"六孫王","note":"清和源氏始祖・武家源氏の祖","ch":[{"id":"mitsunaka","name":"源満仲","b":912,"d":997,"g":"M","title":"摂津守","note":"多田源氏・摂関政治を支える","domain":"多田","ch":[{"id":"yorimitsu","name":"源頼光","b":948,"d":1021,"g":"M","title":"摂津源氏","note":"大江山鬼退治・四天王","ch":[{"id":"yorikuni_s","name":"源頼国","g":"M","title":"美濃守","ch":[{"id":"yoritsuna_s","name":"源頼綱","b":1025,"d":1097,"g":"M","title":"多田明覚","note":"多田源氏の祖","ch":[{"id":"nakamasa_s","name":"源仲政","g":"M","title":"兵庫頭","note":"馬場頼政の父","ch":[{"id":"yorimasa_s","name":"源頼政","b":1104,"d":1180,"g":"M","title":"兵庫頭(源三位)","note":"以仁王の挙兵・鵺退治の伝説","ch":[],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]},{"id":"yorichika_y","name":"源頼親","g":"M","title":"大和守","note":"大和源氏の祖","ch":[],"sp":[]},{"id":"yorinobu_g","name":"源頼信","b":968,"d":1048,"g":"M","title":"河内守","note":"河内源氏祖・平忠常の乱鎮圧","ch":[{"id":"yoriyoshi","name":"源頼義","b":988,"d":1075,"g":"M","title":"河内源氏","note":"前九年の役","domain":"河内","ch":[{"id":"yoshimitsu_g","name":"源義光","b":1045,"d":1127,"g":"M","title":"新羅三郎","note":"甲斐源氏祖→武田氏・佐竹氏","ch":[{"id":"yoshikiyo_k","name":"源義清","b":1075,"d":1149,"g":"M","title":"武田冠者","note":"甲斐源氏・武田氏の実質的な祖","ch":[{"id":"kiyomitsu_k","name":"武田清光","b":1110,"d":1168,"g":"M","title":"武田氏","note":"甲斐源氏発展の祖","ch":[{"id":"nobuyoshi_k","name":"武田信義","b":1128,"d":1186,"g":"M","title":"駿河守","note":"甲斐武田氏初代・頼朝に臣従","ch":[{"id":"nobumitsu_tk","name":"武田信光","g":"M","ch":[{"id":"nobumasa_tk","name":"武田信政","g":"M","ch":[{"id":"nobutoki_tk","name":"武田信時","g":"M","ch":[{"id":"tokitsuna_tk","name":"武田時綱","g":"M","ch":[{"id":"nobumune_tk","name":"武田信宗","g":"M","ch":[{"id":"nobutake_tk","name":"武田信武","g":"M","ch":[{"id":"nobunari_tk","name":"武田信成","g":"M","ch":[{"id":"nobuharu_tk","name":"武田信春","g":"M","ch":[{"id":"nobumitsu2_tk","name":"武田信満","g":"M","ch":[{"id":"nobushige_tk","name":"武田信重","g":"M","ch":[{"id":"nobutsuna_tk","name":"武田信昌","g":"M","ch":[{"id":"nobutora_tk","name":"武田信虎","g":"M","ch":[{"id":"shingen_tk","name":"武田信玄","g":"M","ch":[{"id":"yoshinobu_tk","name":"武田義信","g":"M","ch":[],"sp":[],"b":1538,"d":1567,"title":"武田太郎","note":"信玄の嫡男・謀反の嫌疑で幽閉死","ref":"https://ja.wikipedia.org/wiki/武田義信","mother":"三条夫人"},{"id":"katsuyori_tk","name":"武田勝頼","g":"M","ch":[{"id":"nobukatsu_tk","name":"武田信勝","g":"M","ch":[],"sp":[],"b":1567,"d":1582,"title":"武田氏","note":"勝頼の子・天目山で父と共に自害","ref":"https://ja.wikipedia.org/wiki/武田信勝"}],"sp":[],"b":1546,"d":1582,"title":"甲斐国主","note":"長篠の戦いで敗北・天目山で自害・武田氏滅亡","ref":"https://ja.wikipedia.org/wiki/武田勝頼","domain":"新府城"}],"sp":[{"name":"三条夫人","t":"正室","note":"三条公頼の娘"}],"b":1521,"d":1573,"title":"甲斐守護・信濃守護","note":"甲斐の虎・川中島の戦い・三方ヶ原の戦い","ref":"https://ja.wikipedia.org/wiki/武田信玄","mother":"大井夫人","domain":"甲斐躑躅ヶ崎館"}],"sp":[{"name":"大井夫人","t":"正室","note":"信玄の母"}],"b":1494,"d":1574,"title":"甲斐守護","note":"武田氏十五代・甲斐統一・信玄に追放される","ref":"https://ja.wikipedia.org/wiki/武田信虎"}],"sp":[],"b":1447,"d":1507,"title":"甲斐守護","note":"武田氏十三代・内紛を制す","ref":"https://ja.wikipedia.org/wiki/武田信昌"}],"sp":[],"b":1389,"d":1450,"title":"甲斐守護","note":"武田氏十一代","ref":"https://ja.wikipedia.org/wiki/武田信重_(室町時代)"}],"sp":[],"b":1384,"d":1417,"title":"甲斐守護","note":"武田氏十代・上杉禅秀の乱で敗死","ref":"https://ja.wikipedia.org/wiki/武田信満"}],"sp":[],"b":1362,"d":1413,"title":"甲斐守護","note":"武田氏九代","ref":"https://ja.wikipedia.org/wiki/武田信春"}],"sp":[],"b":1330,"d":1394,"title":"甲斐守護","note":"武田氏八代","ref":"https://ja.wikipedia.org/wiki/武田信成"}],"sp":[],"b":1292,"d":1359,"title":"甲斐守護","note":"武田氏七代・南北朝で足利方","ref":"https://ja.wikipedia.org/wiki/武田信武"}],"sp":[],"title":"甲斐守護","note":"武田氏六代","ref":"https://ja.wikipedia.org/wiki/武田信宗"}],"sp":[],"title":"甲斐守護","note":"武田氏五代","ref":"https://ja.wikipedia.org/wiki/武田時綱"}],"sp":[],"b":1220,"d":1289,"title":"甲斐守護","note":"武田氏四代","ref":"https://ja.wikipedia.org/wiki/武田信時"}],"sp":[],"b":1196,"d":1265,"title":"甲斐守護","note":"武田氏三代","ref":"https://ja.wikipedia.org/wiki/武田信政"}],"sp":[],"b":1162,"d":1248,"title":"武田五郎","note":"武田氏二代・弓馬の名手・甲斐守護","ref":"https://ja.wikipedia.org/wiki/武田信光"}],"sp":[]}],"sp":[]}],"sp":[]},{"id":"yoshinari_s","name":"佐竹義業","g":"M","title":"常陸介","note":"常陸源氏・佐竹氏の祖","ch":[{"id":"masayoshi_sata","name":"佐竹昌義","g":"M","title":"佐竹氏初代","note":"常陸国佐竹郷を領す","ch":[],"sp":[]}],"sp":[]}],"sp":[]},{"id":"yoshiie","name":"源義家","b":1039,"d":1106,"g":"M","title":"八幡太郎","note":"後三年の役・武家の棟梁","domain":"河内","ch":[{"id":"yoshichika","name":"源義親","b":1065,"d":1108,"g":"M","title":"対馬守","note":"九州にて反乱","ch":[{"id":"tameyoshi","name":"源為義","b":1096,"d":1156,"g":"M","title":"六条判官","note":"保元の乱で敗死","ch":[{"id":"yoshikata_k","name":"源義賢","g":"M","title":"帯刀先生","note":"木曾義仲の父・義朝に討たれる","ch":[{"id":"yoshinaka_k","name":"源義仲","b":1154,"d":1184,"g":"M","title":"征夷大将軍(朝日将軍)","note":"木曾義仲・倶利伽羅峠の戦い","ch":[],"sp":[]}],"sp":[]},{"id":"yoshitomo","name":"源義朝","b":1123,"d":1160,"g":"M","title":"下野守","note":"平治の乱で敗死","sp":[{"name":"由良御前","t":"正室","note":"頼朝の母"},{"name":"常盤御前","t":"側室","note":"義経の母"}],"ch":[{"id":"yoshihira","name":"源義平","b":1141,"d":1160,"g":"M","title":"鎌倉悪源太","note":"義朝の長男・平治の乱で討死","ch":[],"sp":[]},{"id":"yoritomo","name":"源頼朝","b":1147,"d":1199,"g":"M","title":"征夷大将軍","note":"鎌倉幕府初代将軍","mother":"由良御前","domain":"鎌倉","sp":[{"name":"北条政子","t":"正室","note":"尼将軍"}],"ch":[{"id":"yoriie","name":"源頼家","b":1182,"d":1204,"g":"M","title":"征夷大将軍","note":"鎌倉幕府二代将軍・暗殺される","mother":"北条政子","ch":[],"sp":[]},{"id":"sanetomo","name":"源実朝","b":1192,"d":1219,"g":"M","title":"征夷大将軍","note":"鎌倉幕府三代将軍・公暁に暗殺される","mother":"北条政子","ch":[],"sp":[]}]},{"id":"yoshitsune","name":"源義経","b":1159,"d":1189,"g":"M","title":"判官","note":"源平合戦の英雄・衣川にて自刃","mother":"常盤御前","ch":[],"sp":[]},{"id":"noriyori","name":"源範頼","b":1150,"d":1193,"g":"M","title":"蒲冠者","note":"源平合戦に活躍","ch":[],"sp":[]}]}],"sp":[]}],"sp":[]},{"id":"yoshikuni","name":"源義国","b":1091,"d":1155,"g":"M","title":"上野介","note":"新田氏・足利氏の祖","ch":[{"id":"yoshiyasu","name":"足利義康","b":1127,"d":1157,"g":"M","title":"足利氏祖","note":"足利荘を本拠","ch":[{"id":"yoshikane_a","name":"足利義兼","b":1154,"d":1199,"g":"M","title":"足利二代","ch":[{"id":"yoshiuji_a","name":"足利義氏","b":1189,"d":1254,"g":"M","title":"足利三代","ch":[{"id":"yoriu_a","name":"足利泰氏","b":1210,"d":1271,"g":"M","title":"足利四代","ch":[{"id":"yoriuji_a","name":"足利頼氏","b":1240,"d":1262,"g":"M","title":"足利五代","ch":[{"id":"ietoki_a","name":"足利家時","b":1260,"d":1284,"g":"M","title":"足利六代","note":"三代の内に天下を取れの遺言","ch":[{"id":"sadauji_a","name":"足利貞氏","b":1273,"d":1331,"g":"M","title":"足利七代","ch":[{"id":"takauji","name":"足利尊氏","b":1305,"d":1358,"g":"M","title":"征夷大将軍","note":"室町幕府初代将軍","domain":"京都","ch":[{"id":"yoshiakira_a","name":"足利義詮","b":1330,"d":1367,"g":"M","title":"征夷大将軍","note":"室町幕府二代将軍","ch":[{"id":"yoshimitsu_a","name":"足利義満","b":1358,"d":1408,"g":"M","title":"征夷大将軍","note":"室町幕府三代・金閣寺・南北朝統一","ch":[{"id":"yoshimochi_a","name":"足利義持","b":1386,"d":1428,"g":"M","title":"征夷大将軍","note":"室町幕府四代","ch":[{"id":"yoshikazu_a","name":"足利義量","b":1407,"d":1425,"g":"M","title":"征夷大将軍","note":"室町幕府五代・早世","ch":[],"sp":[]}],"sp":[]},{"id":"yoshitsugu_a","name":"足利義嗣","b":1394,"d":1418,"g":"M","title":"左馬頭","note":"義持の弟","ch":[],"sp":[]},{"id":"yoshinori_a","name":"足利義教","b":1394,"d":1441,"g":"M","title":"征夷大将軍","note":"室町幕府六代・万人恐怖・嘉吉の乱で暗殺","ch":[{"id":"yoshikatsu_a","name":"足利義勝","b":1434,"d":1443,"g":"M","title":"征夷大将軍","note":"室町幕府七代・早世","ch":[],"sp":[]},{"id":"yoshimasa_a","name":"足利義政","b":1436,"d":1490,"g":"M","title":"征夷大将軍","note":"室町幕府八代・銀閣寺・応仁の乱","sp":[{"name":"日野富子","t":"正室"}],"ch":[{"id":"yoshihisa_a","name":"足利義尚","b":1465,"d":1489,"g":"M","title":"征夷大将軍","note":"室町幕府九代・六角征伐中に陣没","mother":"日野富子","ch":[],"sp":[]}]},{"id":"yoshimi_a","name":"足利義視","b":1439,"d":1491,"g":"M","title":"左馬頭","note":"義政の弟・応仁の乱のきっかけ","ch":[{"id":"yoshitane_a","name":"足利義稙","b":1466,"d":1523,"g":"M","title":"征夷大将軍","note":"室町幕府十代(廃立)・のち復帰し再度将軍","ch":[],"sp":[]}],"sp":[]},{"id":"masatomo_a","name":"足利政知","b":1435,"d":1491,"g":"M","title":"堀越公方","note":"義教の子","ch":[{"id":"yoshizumi_a","name":"足利義澄","b":1481,"d":1511,"g":"M","title":"征夷大将軍","note":"室町幕府十一代将軍","ch":[{"id":"yoshiharu_a","name":"足利義晴","b":1511,"d":1550,"g":"M","title":"征夷大将軍","note":"室町幕府十二代","ch":[{"id":"yoshiteru_a","name":"足利義輝","b":1536,"d":1565,"g":"M","title":"征夷大将軍","note":"室町幕府十三代・剣豪将軍・暗殺される","ch":[],"sp":[]},{"id":"yoshiaki_a","name":"足利義昭","b":1537,"d":1597,"g":"M","title":"征夷大将軍","note":"室町幕府十五代(最後)・信長に追放される","ch":[],"sp":[]}],"sp":[]},{"id":"yoshitsuna_a","name":"足利義維","b":1509,"d":1573,"g":"M","title":"左馬頭","note":"堺公方・義栄の父","ch":[{"id":"yoshihide_a","name":"足利義栄","b":1538,"d":1568,"g":"M","title":"征夷大将軍","note":"室町幕府十四代・在職7ヶ月","ch":[],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]},{"id":"motouji_a","name":"足利基氏","b":1340,"d":1367,"g":"M","title":"初代鎌倉公方","note":"関東足利氏祖","ch":[],"sp":[]}],"sp":[]},{"id":"tadayoshi_a","name":"足利直義","b":1306,"d":1352,"g":"M","title":"左兵衛督","note":"尊氏の弟・観応の擾乱","ch":[],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]},{"id":"ieuji_sh","name":"斯波家氏","g":"M","ch":[{"id":"muneie_sh","name":"斯波宗氏","g":"M","ch":[{"id":"takatsune_sh","name":"斯波高経","g":"M","ch":[{"id":"yoshimasa_sh","name":"斯波義将","g":"M","ch":[{"id":"yoshishige_sh","name":"斯波義重","g":"M","ch":[{"id":"yoshitake_sh","name":"斯波義敏","g":"M","ch":[],"sp":[],"b":1435,"d":1508,"title":"越前守護","note":"応仁の乱の一因・長禄合戦","ref":"https://ja.wikipedia.org/wiki/斯波義敏"}],"sp":[],"b":1371,"d":1418,"title":"管領","note":"管領を務める","ref":"https://ja.wikipedia.org/wiki/斯波義重"}],"sp":[],"b":1350,"d":1410,"title":"管領","note":"室町幕府管領・応永の乱","ref":"https://ja.wikipedia.org/wiki/斯波義将"}],"sp":[],"b":1305,"d":1367,"title":"越前守護","note":"斯波氏三代・新田義貞を破る","ref":"https://ja.wikipedia.org/wiki/斯波高経"}],"sp":[],"title":"斯波氏二代","ref":"https://ja.wikipedia.org/wiki/斯波宗氏"}],"sp":[],"b":1247,"d":1282,"title":"斯波氏祖","note":"足利泰氏の子・奥州斯波郡を領す・斯波氏祖・三管領家","ref":"https://ja.wikipedia.org/wiki/斯波家氏"},{"id":"kimifuka_is","name":"一色公深","g":"M","ch":[{"id":"norifuyu_is","name":"一色範氏","g":"M","ch":[{"id":"naoyori_is","name":"一色直氏","g":"M","ch":[],"sp":[],"title":"若狭守護","ref":"https://ja.wikipedia.org/wiki/一色直氏"},{"id":"norichika_is","name":"一色範光","g":"M","ch":[{"id":"yoshitsura_is","name":"一色義貫","g":"M","ch":[],"sp":[],"b":1400,"d":1440,"title":"若狭守護","note":"足利義教に謀殺される","ref":"https://ja.wikipedia.org/wiki/一色義貫"}],"sp":[],"b":1338,"d":1396,"title":"若狭守護","note":"南朝方と戦う","ref":"https://ja.wikipedia.org/wiki/一色範光"}],"sp":[],"b":1312,"d":1388,"title":"九州探題","note":"九州探題に任ぜられる","ref":"https://ja.wikipedia.org/wiki/一色範氏"}],"sp":[],"title":"一色氏祖","note":"足利泰氏の子・三河国一色を領す・一色氏祖・四職家","ref":"https://ja.wikipedia.org/wiki/一色公深"},{"id":"yoshiaki_shibukawa","name":"渋川義顕","g":"M","ch":[],"sp":[],"title":"渋川氏祖","note":"足利泰氏の子・上野国渋川を領す・渋川氏祖","ref":"https://ja.wikipedia.org/wiki/渋川氏"},{"id":"yorimochi_ishido","name":"石塔頼茂","g":"M","ch":[],"sp":[],"title":"石塔氏祖","note":"足利泰氏の子・石塔氏祖","ref":"https://ja.wikipedia.org/wiki/石塔氏"}],"sp":[]},{"id":"nagauji_ki","name":"吉良長氏","g":"M","ch":[{"id":"mitsauji_ki","name":"吉良満氏","g":"M","ch":[{"id":"sadauji_ki","name":"吉良貞義","g":"M","ch":[{"id":"mitsuyoshi_ki","name":"吉良満義","g":"M","ch":[{"id":"yoshiaki_ki","name":"吉良義央","g":"M","ch":[],"sp":[],"title":"吉良上野介","note":"（途中省略）忠臣蔵で有名な吉良上野介","ref":"https://ja.wikipedia.org/wiki/吉良義央"}],"sp":[],"title":"奥州管領","note":"奥州管領に任ぜられる","ref":"https://ja.wikipedia.org/wiki/吉良満義"}],"sp":[],"title":"吉良氏","note":"南北朝期の吉良氏","ref":"https://ja.wikipedia.org/wiki/吉良貞義"}],"sp":[],"title":"吉良氏二代","note":"吉良氏嫡流","ref":"https://ja.wikipedia.org/wiki/吉良満氏"},{"id":"kuniuji_im","name":"今川国氏","g":"M","ch":[{"id":"motouji_im","name":"今川基氏","g":"M","ch":[{"id":"norikuni_im","name":"今川範国","g":"M","ch":[{"id":"norimitsu_im","name":"今川範政","g":"M","ch":[{"id":"noritada_im","name":"今川範忠","g":"M","ch":[{"id":"yoshitada_im","name":"今川義忠","g":"M","ch":[{"id":"ujichika_im","name":"今川氏親","g":"M","ch":[{"id":"yoshimoto_im","name":"今川義元","g":"M","ch":[{"id":"ujizane_im","name":"今川氏真","g":"M","ch":[],"sp":[],"b":1538,"d":1615,"title":"駿河国主","note":"義元の嫡男・武田・徳川に挟まれ駿河喪失","ref":"https://ja.wikipedia.org/wiki/今川氏真"}],"sp":[],"b":1519,"d":1560,"title":"駿河守護","note":"海道一の弓取り・桶狭間の戦いで織田信長に討たれる","ref":"https://ja.wikipedia.org/wiki/今川義元","domain":"駿府","mother":"寿桂尼"}],"sp":[{"name":"寿桂尼","t":"正室","note":"女戦国大名とも称される"}],"b":1473,"d":1526,"title":"駿河守護","note":"今川氏七代・今川仮名目録制定","ref":"https://ja.wikipedia.org/wiki/今川氏親"}],"sp":[],"b":1436,"d":1476,"title":"駿河守護","note":"今川氏六代・遠江侵攻中に討死","ref":"https://ja.wikipedia.org/wiki/今川義忠"}],"sp":[],"b":1408,"d":1461,"title":"駿河守護","note":"今川氏五代","ref":"https://ja.wikipedia.org/wiki/今川範忠"}],"sp":[],"b":1364,"d":1433,"title":"駿河守護","note":"今川氏四代","ref":"https://ja.wikipedia.org/wiki/今川範政"}],"sp":[],"b":1295,"d":1384,"title":"駿河守護","note":"今川氏三代・駿河守護に任ぜられる","ref":"https://ja.wikipedia.org/wiki/今川範国"}],"sp":[],"title":"今川氏二代","ref":"https://ja.wikipedia.org/wiki/今川基氏"}],"sp":[],"b":1243,"d":1282,"title":"今川氏祖","note":"吉良長氏の子・駿河国今川荘を領す・今川氏祖","ref":"https://ja.wikipedia.org/wiki/今川国氏"}],"sp":[],"b":1211,"d":1290,"title":"吉良氏祖","note":"足利義氏の子・三河国吉良荘を領す・吉良氏祖","ref":"https://ja.wikipedia.org/wiki/吉良長氏"},{"id":"yoshisue_ho","name":"足利義季","g":"M","ch":[{"id":"yoriharu_ho","name":"細川頼貞","g":"M","ch":[{"id":"yoriyuki_ho","name":"細川頼之","g":"M","ch":[{"id":"masamoto_ho","name":"細川政元","g":"M","ch":[],"sp":[],"b":1466,"d":1507,"title":"管領","note":"（途中省略）半将軍と称される・明応の政変","ref":"https://ja.wikipedia.org/wiki/細川政元"}],"sp":[],"b":1329,"d":1392,"title":"管領","note":"室町幕府初代管領・三管領家・康暦の政変","ref":"https://ja.wikipedia.org/wiki/細川頼之"}],"sp":[],"title":"細川氏","note":"（途中省略）細川氏中興","ref":"https://ja.wikipedia.org/wiki/細川氏"}],"sp":[],"title":"細川氏祖","note":"足利義氏の子・三河国細川郷を領し細川を称す・細川氏祖","ref":"https://ja.wikipedia.org/wiki/細川義季"}],"sp":[]},{"id":"yoshizumi_ha","name":"足利義純","g":"M","ch":[{"id":"yasukuni_ha","name":"畠山泰国","g":"M","ch":[{"id":"shigetoki_ha","name":"畠山重忠(足利系)","g":"M","ch":[{"id":"kunikiyo_ha","name":"畠山国清","g":"M","ch":[{"id":"motokuni_ha","name":"畠山基国","g":"M","ch":[{"id":"mitsue_ha","name":"畠山満家","g":"M","ch":[{"id":"yoshinari_ha","name":"畠山義就","g":"M","ch":[],"sp":[],"b":1437,"d":1491,"title":"河内守護","note":"応仁の乱の一因","ref":"https://ja.wikipedia.org/wiki/畠山義就"}],"sp":[],"b":1372,"d":1433,"title":"管領","note":"管領を務める","ref":"https://ja.wikipedia.org/wiki/畠山満家"}],"sp":[],"b":1352,"d":1406,"title":"管領","note":"室町幕府管領・三管領家","ref":"https://ja.wikipedia.org/wiki/畠山基国"}],"sp":[],"b":1318,"d":1362,"title":"関東管領","note":"足利基氏の補佐・関東管領","ref":"https://ja.wikipedia.org/wiki/畠山国清"}],"sp":[],"title":"畠山氏三代","ref":"https://ja.wikipedia.org/wiki/畠山氏"}],"sp":[],"title":"畠山氏二代","ref":"https://ja.wikipedia.org/wiki/畠山泰国"}],"sp":[],"title":"畠山氏(足利系)祖","note":"足利義兼の子・畠山重忠未亡人と結婚し畠山の名跡を継ぐ","ref":"https://ja.wikipedia.org/wiki/足利義純"}],"sp":[]}],"sp":[]},{"id":"yoshishige","name":"新田義重","b":1114,"d":1202,"g":"M","title":"新田荘司","note":"新田氏祖・源氏嫡流を称す","domain":"上野新田","ch":[{"id":"yoshikane_n","name":"新田義兼","b":1139,"d":1206,"g":"M","title":"新田氏二代","ch":[{"id":"yoshifusa_n","name":"新田義房","g":"M","title":"新田氏三代","ch":[{"id":"masayoshi_n","name":"新田政義","g":"M","title":"新田氏四代","note":"幕府の怒りを買い失脚","ch":[{"id":"masauji_n","name":"新田政氏","g":"M","title":"新田氏五代","ch":[{"id":"motouji_n","name":"新田基氏","g":"M","title":"新田氏六代","ch":[{"id":"tomouji_n","name":"新田朝氏","g":"M","title":"新田氏七代","ch":[{"id":"yoshisada","name":"新田義貞","b":1301,"d":1338,"g":"M","title":"左近衛中将","note":"鎌倉幕府滅亡の立役者・南朝方・新田氏八代","ch":[],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]},{"id":"yoshitoshi_sato","name":"里見義俊","g":"M","title":"里見氏祖","note":"新田義重の庶長子・安房里見氏祖","ch":[],"sp":[]},{"id":"yoshinori_yama","name":"山名義範","g":"M","title":"山名氏祖","note":"新田義重の子・六分の一殿山名氏の祖","ch":[],"sp":[]},{"id":"yoshisue","name":"得川義季","b":1141,"d":1221,"g":"M","title":"世良田氏祖","note":"上野国世良田郷を領す・得川を称す","domain":"世良田","ch":[{"id":"yoriu_s","name":"世良田頼氏","b":1165,"d":1230,"g":"M","title":"世良田","ch":[{"id":"noriie_s","name":"世良田教氏","g":"M","title":"世良田","ch":[{"id":"ietoki_s","name":"世良田家時","g":"M","title":"世良田","ch":[{"id":"mitsuyoshi_s","name":"世良田満義","g":"M","title":"世良田","ch":[{"id":"masayoshi_s","name":"世良田政義","g":"M","title":"世良田","ch":[{"id":"chikasuye_s","name":"世良田親季","g":"M","title":"世良田","ch":[{"id":"arichi_s","name":"世良田有親","g":"M","title":"世良田","note":"三河に流浪とされる","ch":[{"id":"chikauj_m","name":"松平親氏","b":1340,"d":1394,"g":"M","title":"松平氏初代","note":"世良田親氏とも・三河松平郷に入り松平を称す(仮冒説あり)","domain":"三河松平","ch":[{"id":"yasuchi_m","name":"松平泰親","g":"M","title":"松平氏二代","domain":"松平","ch":[{"id":"nobumitsu_m","name":"松平信光","b":1404,"d":1488,"g":"M","title":"松平氏三代","note":"岩津城主・松平氏発展の祖","domain":"岩津","ch":[{"id":"chikatada_m","name":"松平親忠","b":1431,"d":1501,"g":"M","title":"安祥松平家初代","domain":"安祥","ch":[{"id":"nagachika_m","name":"松平長親","b":1473,"d":1544,"g":"M","title":"安祥松平家二代","domain":"安祥","ch":[{"id":"nobutada_m","name":"松平信忠","b":1490,"d":1531,"g":"M","title":"安祥松平家三代","domain":"安祥","ch":[{"id":"kiyoyasu_m","name":"松平清康","b":1511,"d":1535,"g":"M","title":"安祥松平家四代","note":"三河統一に尽力・森山崩れ","domain":"岡崎","ch":[{"id":"hirotada_m","name":"松平広忠","b":1526,"d":1549,"g":"M","title":"安祥松平家五代","note":"家康の父・今川義元に服属","domain":"岡崎","sp":[{"name":"於大の方","t":"正室","note":"家康の母・水野忠政娘"}],"ch":[{"id":"ieyasu","name":"徳川家康","b":1543,"d":1616,"g":"M","title":"征夷大将軍","court":"従一位太政大臣","domain":"駿府・江戸","mother":"於大の方","sn":1,"note":"江戸幕府開府","sp":[{"name":"築山殿","t":"正室","note":"関口親永娘"},{"name":"西郷局","t":"側室","note":"秀忠・忠吉の母"},{"name":"お万の方","t":"側室","note":"秀康の母"},{"name":"お亀の方","t":"側室","note":"義直の母"},{"name":"養珠院","t":"側室","note":"頼宣・頼房の母"},{"name":"茶阿局","t":"側室","note":"忠輝の母"}],"ch":[{"id":"nobuyasu","name":"松平信康","b":1559,"d":1579,"g":"M","mother":"築山殿","title":"岡崎城主","note":"信長の命により自刃","sp":[{"name":"徳姫","t":"正室","note":"織田信長娘"}],"ch":[]},{"id":"hideyasu","name":"結城秀康","b":1574,"d":1607,"g":"M","mother":"お万の方","title":"越前北ノ庄藩主","court":"従三位参議","note":"結城家養子→越前松平家祖","adopted":"結城晴朝養子","ch":[{"id":"tadanao","name":"松平忠直","b":1595,"d":1650,"g":"M","mother":"清涼院","title":"越前藩主","ch":[],"sp":[]}],"sp":[]},{"id":"hidetada","name":"徳川秀忠","b":1579,"d":1632,"g":"M","mother":"西郷局","title":"征夷大将軍","court":"従一位太政大臣","domain":"江戸","sn":2,"note":"二代将軍","sp":[{"name":"お江(崇源院)","t":"正室","note":"浅井長政の三女"},{"name":"静(お静)","t":"側室","note":"正之の母"}],"ch":[{"id":"iemitsu","name":"徳川家光","b":1604,"d":1651,"g":"M","mother":"お江","title":"征夷大将軍","court":"従一位左大臣","domain":"江戸","sn":3,"note":"三代将軍・参勤交代制度化","sp":[{"name":"鷹司孝子","t":"正室","note":"鷹司信房娘"},{"name":"お楽の方","t":"側室","note":"家綱の母"},{"name":"お夏の方","t":"側室","note":"綱重の母"},{"name":"お玉(桂昌院)","t":"側室","note":"綱吉の母"}],"ch":[{"id":"ietsuna","name":"徳川家綱","b":1641,"d":1680,"g":"M","mother":"お楽の方","title":"征夷大将軍","court":"従一位右大臣","domain":"江戸","sn":4,"note":"四代将軍・左様せい様","ch":[],"sp":[]},{"id":"tsunashige","name":"徳川綱重","b":1644,"d":1678,"g":"M","mother":"お夏の方","title":"甲府藩主","court":"従三位中納言","sp":[{"name":"お保良の方","t":"側室"}],"ch":[{"id":"ienobu","name":"徳川家宣","b":1662,"d":1712,"g":"M","mother":"お保良の方","title":"征夷大将軍","court":"従一位右大臣","domain":"江戸","sn":6,"note":"六代将軍・正徳の治","sp":[{"name":"近衛熙子","t":"正室","note":"近衛基熙娘"},{"name":"お喜世の方","t":"側室","note":"家継の母"}],"ch":[{"id":"ietsugu","name":"徳川家継","b":1709,"d":1716,"g":"M","mother":"お喜世の方","title":"征夷大将軍","court":"従二位内大臣","domain":"江戸","sn":7,"note":"七代将軍・幼年にて薨去","ch":[],"sp":[]}]}]},{"id":"tsunayoshi","name":"徳川綱吉","b":1646,"d":1709,"g":"M","mother":"お玉(桂昌院)","title":"征夷大将軍","court":"従一位右大臣","domain":"江戸","sn":5,"note":"五代将軍・生類憐みの令","sp":[{"name":"鷹司信子","t":"正室","note":"鷹司教平娘"},{"name":"お伝の方","t":"側室"}],"ch":[{"id":"tokumatsu","name":"徳松","b":1679,"d":1683,"g":"M","mother":"お伝の方","note":"夭折","ch":[],"sp":[]}]}]},{"id":"tadanaga","name":"徳川忠長","b":1606,"d":1634,"g":"M","mother":"お江","title":"駿河大納言","court":"従二位権大納言","domain":"駿府","note":"乱行により改易・自刃","ch":[],"sp":[]},{"id":"senhime","name":"千姫","b":1597,"d":1666,"g":"F","mother":"お江","title":"天樹院","note":"豊臣秀頼正室→本多忠刻正室","ch":[],"sp":[]},{"id":"kazuko_t","name":"和子(東福門院)","b":1607,"d":1678,"g":"F","mother":"お江","title":"女御→中宮","note":"後水尾天皇中宮・明正天皇の母","ch":[],"sp":[]},{"id":"masayuki","name":"保科正之","b":1611,"d":1673,"g":"M","mother":"お静","title":"会津藩主","court":"従四位下","domain":"会津","note":"会津松平家祖・名君","adopted":"保科正光養子","ch":[],"sp":[]}]},{"id":"tadayoshi","name":"松平忠吉","b":1580,"d":1607,"g":"M","mother":"西郷局","title":"尾張清洲藩主","note":"関ヶ原で活躍","ch":[],"sp":[]},{"id":"nobuyoshi_t","name":"武田信吉","b":1583,"d":1603,"g":"M","mother":"お都摩の方","title":"水戸藩主","note":"甲斐武田家名跡","ch":[],"sp":[]},{"id":"tadateru","name":"松平忠輝","b":1592,"d":1683,"g":"M","mother":"茶阿局","title":"越後高田藩主","note":"改易・91歳没","ch":[],"sp":[]},{"id":"yoshinao","name":"徳川義直","b":1601,"d":1650,"g":"M","mother":"お亀の方","title":"尾張藩初代藩主","court":"従二位権大納言","domain":"名古屋","note":"御三家・尾張徳川家祖","sp":[{"name":"春姫","t":"正室","note":"浅野幸長娘"}],"ch":[{"id":"mitsutomo","name":"徳川光友","b":1625,"d":1700,"g":"M","mother":"お尉の方","title":"尾張藩二代","court":"従二位権大納言","domain":"名古屋","ch":[{"id":"tsunanari","name":"徳川綱誠","b":1652,"d":1699,"g":"M","title":"尾張藩三代","domain":"名古屋","ch":[{"id":"yoshimichi","name":"徳川吉通","b":1689,"d":1713,"g":"M","title":"尾張藩四代","domain":"名古屋","ch":[],"sp":[]},{"id":"tsugutomo","name":"徳川継友","b":1692,"d":1731,"g":"M","title":"尾張藩七代","domain":"名古屋","ch":[],"sp":[]},{"id":"muneharu","name":"徳川宗春","b":1696,"d":1764,"g":"M","title":"尾張藩七代","domain":"名古屋","note":"享保改革に反対・蟄居","ch":[],"sp":[]}],"sp":[]}],"sp":[]}]},{"id":"yorinobu_t","name":"徳川頼宣","b":1602,"d":1671,"g":"M","mother":"養珠院","title":"紀州藩初代藩主","court":"従二位権大納言","domain":"和歌山","note":"御三家・紀州徳川家祖","sp":[{"name":"瑤林院","t":"正室","note":"加藤清正娘"}],"ch":[{"id":"mitsusada","name":"徳川光貞","b":1627,"d":1705,"g":"M","title":"紀州藩二代","court":"従三位権中納言","domain":"和歌山","sp":[{"name":"安宮照子","t":"正室"},{"name":"浄円院","t":"側室","note":"吉宗の母"}],"ch":[{"id":"yoshimune","name":"徳川吉宗","b":1684,"d":1751,"g":"M","mother":"浄円院","title":"征夷大将軍","court":"従一位太政大臣","domain":"江戸","sn":8,"note":"八代将軍・享保の改革・米将軍","sp":[{"name":"理子女王","t":"正室","note":"伏見宮貞致親王娘"},{"name":"お須磨の方","t":"側室","note":"家重の母"},{"name":"お久免の方","t":"側室"}],"ch":[{"id":"ieshige","name":"徳川家重","b":1712,"d":1761,"g":"M","mother":"お須磨の方","title":"征夷大将軍","court":"従一位右大臣","domain":"江戸","sn":9,"note":"九代将軍","sp":[{"name":"お幸の方","t":"側室","note":"家治の母"}],"ch":[{"id":"ieharu","name":"徳川家治","b":1737,"d":1786,"g":"M","mother":"お幸の方","title":"征夷大将軍","court":"従一位右大臣","domain":"江戸","sn":10,"note":"十代将軍・田沼時代","sp":[{"name":"五十宮倫子","t":"正室","note":"閑院宮直仁親王娘"}],"ch":[{"id":"iemoto","name":"徳川家基","b":1762,"d":1779,"g":"M","title":"世嗣","note":"将来を嘱望されるも17歳で急死","ch":[],"sp":[]}]},{"id":"shigeyoshi_shimizu","name":"徳川重好","b":1745,"d":1795,"g":"M","title":"清水徳川家初代","court":"従三位","note":"御三卿・清水家祖","ch":[],"sp":[]}]},{"id":"munetake","name":"徳川宗武","b":1716,"d":1771,"g":"M","title":"田安徳川家初代","court":"従三位","note":"御三卿・田安家祖","ch":[{"id":"harusada_tayasu","name":"松平定信","b":1759,"d":1829,"g":"M","title":"白河藩主・老中","note":"寛政の改革","adopted":"白河松平家養子","ch":[],"sp":[]}],"sp":[]},{"id":"munetada","name":"徳川宗尹","b":1721,"d":1765,"g":"M","title":"一橋徳川家初代","court":"従三位","note":"御三卿・一橋家祖","ch":[{"id":"harusada","name":"徳川治済","b":1751,"d":1827,"g":"M","title":"一橋徳川家二代","ch":[{"id":"ienari","name":"徳川家斉","b":1773,"d":1841,"g":"M","title":"征夷大将軍","court":"従一位太政大臣","domain":"江戸","sn":11,"note":"十一代将軍・大御所時代・子女55人","adopted":"本家養子","sp":[{"name":"広大院","t":"正室","note":"島津重豪娘"},{"name":"お万の方(香琳院)","t":"側室"}],"ch":[{"id":"iyeyoshi","name":"徳川家慶","b":1793,"d":1853,"g":"M","mother":"お万の方","title":"征夷大将軍","court":"従一位左大臣","domain":"江戸","sn":12,"note":"十二代将軍・天保の改革","sp":[{"name":"楽宮喬子","t":"正室","note":"有栖川宮織仁親王娘"}],"ch":[{"id":"iesada","name":"徳川家定","b":1824,"d":1858,"g":"M","title":"征夷大将軍","court":"従一位左大臣","domain":"江戸","sn":13,"note":"十三代将軍・嗣子なし","sp":[{"name":"天璋院(篤姫)","t":"正室","note":"島津斉彬養女"}],"ch":[]}]},{"id":"nariyuki_kii","name":"徳川斉順","b":1801,"d":1846,"g":"M","title":"紀州藩十一代","domain":"和歌山","adopted":"紀州家養子","ch":[{"id":"iemochi","name":"徳川家茂","b":1846,"d":1866,"g":"M","title":"征夷大将軍","court":"従一位左大臣","domain":"江戸","sn":14,"note":"十四代将軍・公武合体","adopted":"本家養子","sp":[{"name":"和宮親子内親王","t":"正室","note":"仁孝天皇皇女"}],"ch":[]}],"sp":[]}]}],"sp":[]}],"sp":[]}]}]}]},{"id":"yorifusa_t","name":"徳川頼房","b":1603,"d":1661,"g":"M","mother":"養珠院","title":"水戸藩初代藩主","court":"従三位権中納言","domain":"水戸","note":"御三家・水戸徳川家祖","sp":[{"name":"久昌院","t":"側室"}],"ch":[{"id":"mitsukuni","name":"徳川光圀","b":1628,"d":1701,"g":"M","mother":"久昌院","title":"水戸藩二代","court":"従三位権中納言","domain":"水戸","note":"水戸黄門・大日本史編纂","ch":[],"sp":[]},{"id":"yorishige","name":"松平頼重","b":1622,"d":1695,"g":"M","title":"高松藩主","domain":"高松","note":"光圀の兄・高松松平家祖","ch":[{"id":"tsunaeda","name":"徳川綱條","b":1656,"d":1718,"g":"M","title":"水戸藩三代","domain":"水戸","adopted":"光圀養子","note":"光圀の養嗣子","ch":[{"id":"munetaka_m","name":"徳川宗堯","b":1705,"d":1730,"g":"M","title":"水戸藩四代","domain":"水戸","ch":[{"id":"munimoto_m","name":"徳川宗翰","b":1728,"d":1766,"g":"M","title":"水戸藩五代","domain":"水戸","ch":[{"id":"harumori","name":"徳川治保","b":1751,"d":1805,"g":"M","title":"水戸藩六代","domain":"水戸","ch":[{"id":"harutoshi","name":"徳川治紀","b":1773,"d":1816,"g":"M","title":"水戸藩七代","domain":"水戸","ch":[{"id":"nariaki","name":"徳川斉昭","b":1800,"d":1860,"g":"M","title":"水戸藩九代","court":"従三位権中納言","domain":"水戸","note":"烈公・尊王攘夷の中心・慶喜の父","sp":[{"name":"吉子女王","t":"正室","note":"有栖川宮織仁親王娘"},{"name":"万里小路睦子","t":"側室"}],"ch":[{"id":"yoshinobu","name":"徳川慶喜","b":1837,"d":1913,"g":"M","mother":"吉子女王","title":"征夷大将軍","court":"従一位太政大臣(贈)","domain":"江戸","sn":15,"note":"十五代将軍・大政奉還","adopted":"一橋家養子","sp":[{"name":"一条美賀子","t":"正室","note":"一条忠香養女"}],"ch":[]},{"id":"akitake","name":"徳川昭武","b":1853,"d":1910,"g":"M","title":"水戸藩十一代","domain":"水戸","note":"パリ万博派遣・最後の水戸藩主","ch":[],"sp":[]}]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}]}]}]}],"sp":[]},{"id":"nobusada_m2","name":"松平信定","g":"M","ch":[],"sp":[],"title":"桜井松平家(別系)","note":"信忠の子・桜井城を領す・義理に背く","ref":"https://ja.wikipedia.org/wiki/松平信定"}],"sp":[]},{"id":"chikafusa_m","name":"松平信定","g":"M","ch":[{"id":"kiyosada_saku","name":"松平清定","g":"M","ch":[{"id":"ienori_saku","name":"松平家次","g":"M","ch":[],"sp":[],"title":"桜井松平家三代","ref":"https://ja.wikipedia.org/wiki/桜井松平家"}],"sp":[],"title":"桜井松平家二代","ref":"https://ja.wikipedia.org/wiki/桜井松平家"}],"sp":[],"title":"桜井松平家初代","note":"長親の子・桜井松平家の祖・三河国桜井城主","ref":"https://ja.wikipedia.org/wiki/桜井松平家"}],"sp":[]},{"id":"chikanori_m","name":"松平親則","g":"M","ch":[{"id":"chikamasa_naga","name":"松平親益","g":"M","ch":[],"sp":[],"title":"長沢松平家二代","ref":"https://ja.wikipedia.org/wiki/長沢松平家"}],"sp":[],"title":"長沢松平家初代","note":"親忠の子・長沢松平家の祖・三河国長沢城主","ref":"https://ja.wikipedia.org/wiki/長沢松平家"},{"id":"norimoto_m","name":"松平乗元","g":"M","ch":[{"id":"norimasa_ogyu","name":"松平乗正","g":"M","ch":[],"sp":[],"title":"大給松平家二代","ref":"https://ja.wikipedia.org/wiki/大給松平家"}],"sp":[],"title":"大給松平家初代","note":"親忠の子・大給松平家の祖・三河国大給城主","ref":"https://ja.wikipedia.org/wiki/大給松平家"},{"id":"norikiyo_m","name":"松平乗清","g":"M","ch":[],"sp":[],"title":"滝脇松平家初代","note":"親忠の子・滝脇松平家の祖","ref":"https://ja.wikipedia.org/wiki/滝脇松平家"},{"id":"chikamori_m","name":"松平親盛","g":"M","ch":[],"sp":[],"title":"福釜松平家初代","note":"親忠の子・福釜松平家の祖・三河国福釜城主","ref":"https://ja.wikipedia.org/wiki/福釜松平家"}],"sp":[]},{"id":"moriya_m","name":"松平守家","g":"M","ch":[{"id":"ietsuna_take","name":"松平家次","g":"M","ch":[{"id":"kiyoyoshi_take","name":"松平清善","g":"M","ch":[],"sp":[],"title":"竹谷松平家三代","ref":"https://ja.wikipedia.org/wiki/竹谷松平家"}],"sp":[],"title":"竹谷松平家二代","note":"守家の子","ref":"https://ja.wikipedia.org/wiki/竹谷松平家"}],"sp":[],"title":"竹谷松平家初代","note":"信光の長男・竹谷松平家の祖・三河国竹谷城主","ref":"https://ja.wikipedia.org/wiki/竹谷松平家"},{"id":"yosoe_m","name":"松平与副","g":"M","ch":[{"id":"koretada_kata","name":"松平紀親","g":"M","ch":[],"sp":[],"title":"形原松平家二代","ref":"https://ja.wikipedia.org/wiki/形原松平家"}],"sp":[],"title":"形原松平家初代","note":"信光の子・形原松平家の祖・三河国形原城主","ref":"https://ja.wikipedia.org/wiki/形原松平家"},{"id":"mitsushige_m","name":"松平光重","g":"M","ch":[],"sp":[],"title":"大草松平家初代","note":"信光の子・大草松平家の祖・三河国大草城主","ref":"https://ja.wikipedia.org/wiki/大草松平家"},{"id":"tadakage_m","name":"松平忠景","g":"M","ch":[{"id":"tadachika_goi","name":"松平元心","g":"M","ch":[],"sp":[],"title":"五井松平家二代","ref":"https://ja.wikipedia.org/wiki/五井松平家"}],"sp":[],"title":"五井松平家初代","note":"信光の子・五井松平家の祖・三河国五井城主","ref":"https://ja.wikipedia.org/wiki/五井松平家"},{"id":"tadasada_m","name":"松平忠定","g":"M","ch":[{"id":"tadayoshi_fuko","name":"松平好景","g":"M","ch":[{"id":"ienori_fuko","name":"松平家忠","g":"M","ch":[],"sp":[],"title":"深溝松平家三代","note":"家康家臣として活躍・家忠日記で有名","ref":"https://ja.wikipedia.org/wiki/松平家忠"}],"sp":[],"title":"深溝松平家二代","ref":"https://ja.wikipedia.org/wiki/深溝松平家"}],"sp":[],"title":"深溝松平家初代","note":"信光の子・深溝松平家の祖・三河国深溝城主","ref":"https://ja.wikipedia.org/wiki/深溝松平家"},{"id":"mitsuchika_m","name":"松平光親","g":"M","ch":[],"sp":[],"title":"能見松平家初代","note":"信光の子・能見松平家の祖","ref":"https://ja.wikipedia.org/wiki/能見松平家"},{"id":"yoshiharu_m","name":"松平義春","g":"M","ch":[{"id":"yoshikatsu_tojo","name":"松平持広","g":"M","ch":[],"sp":[],"title":"東条松平家二代","ref":"https://ja.wikipedia.org/wiki/東条松平家"}],"sp":[],"title":"東条松平家初代","note":"信光の子・東条松平家の祖・三河国東条城主","ref":"https://ja.wikipedia.org/wiki/東条松平家"},{"id":"toshinaga_m","name":"松平利長","g":"M","ch":[{"id":"toshikatsu_fuji","name":"松平利勝","g":"M","ch":[],"sp":[],"title":"藤井松平家二代","ref":"https://ja.wikipedia.org/wiki/藤井松平家"}],"sp":[],"title":"藤井松平家初代","note":"信光の子・藤井松平家の祖・三河国藤井城主","ref":"https://ja.wikipedia.org/wiki/藤井松平家"},{"id":"nobutaka_m","name":"松平信孝","g":"M","ch":[],"sp":[],"title":"三木松平家初代","note":"信光の子・三木松平家の祖","ref":"https://ja.wikipedia.org/wiki/三木松平家"},{"id":"nobukuni_m","name":"松平益親","g":"M","ch":[],"sp":[],"title":"鵜殿松平家初代","note":"信光の子(一説)・鵜殿松平家の祖(異説あり)","ref":"https://ja.wikipedia.org/wiki/鵜殿松平家"}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]},{"id":"yoshishige5","name":"新田義兼","b":1139,"d":1206,"g":"M","title":"新田氏二代","ch":[{"id":"yoshishige4","name":"新田基氏","g":"M","title":"新田氏","ch":[{"id":"yoshishige3","name":"新田政氏","g":"M","title":"新田氏","ch":[{"id":"yoshishige2","name":"新田政義","g":"M","title":"新田氏","ch":[{"id":"yoshishige_later","name":"新田朝氏","g":"M","title":"新田氏","ch":[{"id":"yoshisada_1","name":"新田義貞","b":1301,"d":1338,"g":"M","title":"上野介","note":"鎌倉幕府滅亡の功臣・南朝方","ch":[{"id":"yoshiaki_n","name":"新田義顕","b":1318,"d":1337,"g":"M","title":"越後守","note":"義貞の長男・金崎城で自刃","ch":[],"sp":[]},{"id":"yoshioki_n","name":"新田義興","b":1331,"d":1358,"g":"M","title":"左兵衛佐","note":"矢口渡で謀殺される","ch":[],"sp":[]},{"id":"yoshimune_n","name":"新田義宗","b":1331,"d":1368,"g":"M","title":"越後守","note":"新田氏を継ぐ・武蔵野合戦で敗死","ch":[],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]},{"id":"koko","name":"光孝天皇","b":830,"d":887,"g":"M","title":"第58代天皇","note":"陽成廃位後に即位","ch":[{"id":"uda","name":"宇多天皇","b":867,"d":931,"g":"M","title":"第59代天皇","note":"寛平の治・菅原道真登用","ch":[{"id":"daigo","name":"醍醐天皇","b":885,"d":930,"g":"M","title":"第60代天皇","note":"延喜の治","ch":[{"id":"murakami","name":"村上天皇","b":926,"d":967,"g":"M","title":"第62代天皇","note":"天暦の治","ch":[{"id":"enyuu","name":"円融天皇","b":959,"d":991,"g":"M","title":"第64代天皇","ch":[{"id":"ichijou","name":"一条天皇","b":980,"d":1011,"g":"M","title":"第66代天皇","note":"紫式部・清少納言の時代","ch":[{"id":"gosuzaku","name":"後朱雀天皇","b":1009,"d":1045,"g":"M","title":"第69代天皇","ch":[{"id":"gosanjou","name":"後三条天皇","b":1034,"d":1073,"g":"M","title":"第71代天皇","note":"院政の先駆","ch":[{"id":"shirakawa","name":"白河天皇","b":1053,"d":1129,"g":"M","title":"第72代天皇","note":"院政開始","ch":[{"id":"shirakawa_ko","name":"堀河天皇","b":1079,"d":1107,"g":"M","title":"第73代天皇","ch":[{"id":"toba","name":"鳥羽天皇","b":1103,"d":1156,"g":"M","title":"第74代天皇","ch":[{"id":"goshirakawa","name":"後白河天皇","b":1127,"d":1192,"g":"M","title":"第77代天皇","note":"源平争乱期の治天の君","ch":[{"id":"takakura","name":"高倉天皇","b":1161,"d":1181,"g":"M","title":"第80代天皇","ch":[{"id":"antoku","name":"安徳天皇","b":1178,"d":1185,"g":"M","title":"第81代天皇","note":"壇ノ浦で入水","mother":"平徳子","ch":[],"sp":[]},{"id":"gotoba","name":"後鳥羽天皇","b":1180,"d":1239,"g":"M","title":"第82代天皇","note":"承久の乱","ch":[{"id":"tsuchimikado","name":"土御門天皇","b":1196,"d":1231,"g":"M","title":"第83代天皇","ch":[{"id":"gosaga","name":"後嵯峨天皇","b":1220,"d":1272,"g":"M","title":"第86代天皇","ch":[{"id":"gofukakusa","name":"後深草天皇","b":1243,"d":1304,"g":"M","title":"第87代天皇","note":"持明院統(北朝)の祖","ch":[{"id":"fushimi","name":"伏見天皇","b":1265,"d":1317,"g":"M","title":"第92代天皇","ch":[{"id":"gofushimi","name":"後伏見天皇","b":1288,"d":1336,"g":"M","title":"第93代天皇","ch":[{"id":"kogon","name":"光厳天皇","b":1313,"d":1364,"g":"M","title":"北朝初代天皇","note":"南北朝時代","ch":[{"id":"suko","name":"崇光天皇","b":1334,"d":1398,"g":"M","title":"北朝第3代天皇","ch":[{"id":"fushiminomiya","name":"栄仁親王","b":1351,"d":1416,"g":"M","title":"伏見宮初代","note":"伏見宮家祖","ch":[{"id":"sadafusa","name":"貞成親王","b":1372,"d":1456,"g":"M","title":"後崇光院","note":"後花園天皇の父","ch":[{"id":"gohanazono","name":"後花園天皇","b":1419,"d":1471,"g":"M","title":"第102代天皇","ch":[{"id":"gotsuchimikado","name":"後土御門天皇","b":1442,"d":1500,"g":"M","title":"第103代天皇","note":"応仁の乱","ch":[{"id":"gokashiwabara","name":"後柏原天皇","b":1464,"d":1526,"g":"M","title":"第104代天皇","ch":[{"id":"gonara","name":"後奈良天皇","b":1497,"d":1557,"g":"M","title":"第105代天皇","ch":[{"id":"ogimachi","name":"正親町天皇","b":1517,"d":1593,"g":"M","title":"第106代天皇","note":"織田信長の時代","ch":[{"id":"sanehito","name":"誠仁親王","b":1552,"d":1586,"g":"M","title":"親王","note":"後陽成天皇の父","ch":[{"id":"goyozei","name":"後陽成天皇","b":1571,"d":1617,"g":"M","title":"第107代天皇","ch":[{"id":"gomizunoo","name":"後水尾天皇","b":1596,"d":1680,"g":"M","title":"第108代天皇","note":"紫衣事件","sp":[{"name":"徳川和子","t":"正室","note":"秀忠の娘・東福門院"}],"ch":[{"id":"reigen","name":"霊元天皇","b":1654,"d":1732,"g":"M","title":"第112代天皇","ch":[{"id":"higashiyama","name":"東山天皇","b":1675,"d":1710,"g":"M","title":"第113代天皇","ch":[{"id":"naohito","name":"直仁親王","b":1704,"d":1753,"g":"M","title":"閑院宮初代","ch":[{"id":"sukehito","name":"典仁親王","b":1733,"d":1794,"g":"M","title":"慶光天皇(追尊)","note":"光格天皇の父","ch":[{"id":"kokaku","name":"光格天皇","b":1771,"d":1840,"g":"M","title":"第119代天皇","note":"尊号一件","ch":[{"id":"ninko","name":"仁孝天皇","b":1800,"d":1846,"g":"M","title":"第120代天皇","ch":[{"id":"komei","name":"孝明天皇","b":1831,"d":1867,"g":"M","title":"第121代天皇","note":"攘夷派・幕末動乱期","ch":[{"id":"meiji","name":"明治天皇","b":1852,"d":1912,"g":"M","title":"第122代天皇","note":"明治維新・近代化","sp":[{"name":"昭憲皇太后","t":"正室"}],"ch":[{"id":"taisho","name":"大正天皇","b":1879,"d":1926,"g":"M","title":"第123代天皇","sp":[{"name":"貞明皇后","t":"正室","note":"九条節子"}],"ch":[{"id":"showa","name":"昭和天皇","b":1901,"d":1989,"g":"M","title":"第124代天皇","note":"激動の昭和","sp":[{"name":"香淳皇后","t":"正室","note":"久邇宮良子女王"}],"ch":[{"id":"akihito","name":"上皇明仁","b":1933,"g":"M","title":"第125代天皇","note":"平成・2019年譲位","sp":[{"name":"上皇后美智子","t":"正室","note":"正田美智子・民間出身初"}],"ch":[{"id":"naruhito","name":"今上天皇徳仁","b":1960,"g":"M","title":"第126代天皇","note":"令和","sp":[{"name":"皇后雅子","t":"正室","note":"小和田雅子"}],"ch":[{"id":"aiko","name":"敬宮愛子内親王","b":2001,"g":"F","title":"内親王","ch":[],"sp":[]}]},{"id":"fumihito","name":"秋篠宮文仁親王","b":1965,"g":"M","title":"皇嗣","sp":[{"name":"紀子妃","t":"正室","note":"川嶋紀子"}],"ch":[{"id":"hisahito","name":"悠仁親王","b":2006,"g":"M","title":"親王","ch":[],"sp":[]}]}]}]}]}]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]},{"id":"kameyama","name":"亀山天皇","b":1249,"d":1305,"g":"M","title":"第90代天皇","note":"大覚寺統(南朝)の祖","ch":[{"id":"gouda","name":"後宇多天皇","b":1267,"d":1324,"g":"M","title":"第91代天皇","ch":[{"id":"godaigo","name":"後醍醐天皇","b":1288,"d":1339,"g":"M","title":"第96代天皇","note":"建武の新政・南朝初代","ch":[],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]},{"id":"kazurawara","name":"葛原親王","b":786,"d":853,"g":"M","title":"親王","note":"桓武天皇皇子・桓武平氏の祖","ch":[{"id":"takamune","name":"平高棟","b":804,"d":867,"g":"M","title":"大納言","note":"臣籍降下・堂上平氏の祖","ch":[],"sp":[]},{"id":"takamio","name":"高見王","g":"M","title":"王","note":"武家平氏の祖とされる","ch":[{"id":"takamochi","name":"平高望","b":839,"d":911,"g":"M","title":"上総介","note":"臣籍降下・高望王・坂東へ下向","ch":[{"id":"kunika_t","name":"平国香","b":872,"d":935,"g":"M","title":"常陸大掾","note":"伊勢平氏・越後平氏の祖","ch":[{"id":"sadamori_t","name":"平貞盛","b":910,"d":989,"g":"M","title":"鎮守府将軍","note":"平将門の乱を平定","ch":[{"id":"korehira","name":"平維衡","b":950,"d":1022,"g":"M","title":"伊勢守","note":"伊勢平氏の祖","ch":[{"id":"masanori_t","name":"平正度","g":"M","title":"伊勢守","ch":[{"id":"masahira_t","name":"平正衡","g":"M","title":"出羽守","ch":[{"id":"masamori_t","name":"平正盛","b":1067,"d":1121,"g":"M","title":"但馬守","note":"白河法皇に接近し武力基盤を築く","ch":[{"id":"tadamori_t","name":"平忠盛","b":1096,"d":1153,"g":"M","title":"刑部卿","note":"平氏政権の基礎・武士で初の昇殿","ch":[{"id":"kiyomori","name":"平清盛","b":1118,"d":1181,"g":"M","title":"太政大臣","note":"平氏政権樹立・日宋貿易","domain":"六波羅","sp":[{"name":"時子(二位尼)","t":"正室"}],"ch":[{"id":"shigemori","name":"平重盛","b":1138,"d":1179,"g":"M","title":"内大臣","note":"小松内府・有能な嫡男だったが早世","ch":[{"id":"koremori","name":"平維盛","b":1158,"d":1184,"g":"M","title":"右近衛権少将","note":"富士川の戦いで敗走","ch":[],"sp":[]}],"sp":[]},{"id":"munemori","name":"平宗盛","b":1147,"d":1185,"g":"M","title":"内大臣","note":"壇ノ浦で捕縛され斬首","mother":"時子","ch":[],"sp":[]},{"id":"tokuko_t","name":"平徳子(建礼門院)","b":1155,"d":1214,"g":"F","title":"中宮","note":"高倉天皇中宮・安徳天皇の母","mother":"時子","ch":[],"sp":[]}]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]},{"id":"toshitsugu_ise","name":"伊勢俊継","g":"M","ch":[{"id":"sadatsugu_ise","name":"伊勢貞継","g":"M","ch":[{"id":"sadayuki_ise","name":"伊勢貞行","g":"M","ch":[{"id":"sadakuni_ise","name":"伊勢貞国","g":"M","ch":[{"id":"sadachika_ise","name":"伊勢貞親","g":"M","ch":[{"id":"sadamune_ise","name":"伊勢貞宗","g":"M","ch":[{"id":"sadatada_ise","name":"伊勢貞忠","g":"M","ch":[],"sp":[],"title":"政所執事","note":"伊勢氏末期の政所執事","ref":"https://ja.wikipedia.org/wiki/伊勢氏"}],"sp":[],"b":1444,"d":1509,"title":"政所執事","note":"貞親の子・明応の政変で細川政元に協力","ref":"https://ja.wikipedia.org/wiki/伊勢貞宗"}],"sp":[],"b":1417,"d":1473,"title":"政所執事","note":"足利義政の側近・文正の政変で失脚・応仁の乱の遠因","ref":"https://ja.wikipedia.org/wiki/伊勢貞親"}],"sp":[],"d":1458,"title":"政所執事","note":"三代目政所執事・将軍近臣として権勢を振るう","ref":"https://ja.wikipedia.org/wiki/伊勢貞国"}],"sp":[],"title":"政所執事","note":"二代目政所執事","ref":"https://ja.wikipedia.org/wiki/伊勢氏"},{"id":"moritoki_ise","name":"伊勢盛時(北条早雲)","g":"M","ch":[{"id":"ujitsuna_hojo","name":"北条氏綱","g":"M","ch":[{"id":"ujiyasu_hojo","name":"北条氏康","g":"M","ch":[{"id":"ujimasa_hojo","name":"北条氏政","g":"M","ch":[{"id":"ujinao_hojo","name":"北条氏直","g":"M","ch":[],"sp":[],"b":1562,"d":1591,"title":"後北条氏五代","note":"小田原征伐で降伏・後北条氏滅亡","ref":"https://ja.wikipedia.org/wiki/北条氏直","domain":"小田原"}],"sp":[],"b":1538,"d":1590,"title":"後北条氏四代","note":"小田原征伐で豊臣秀吉に敗北・切腹","ref":"https://ja.wikipedia.org/wiki/北条氏政","domain":"小田原"}],"sp":[],"b":1515,"d":1571,"title":"後北条氏三代","note":"相模の獅子・河越夜戦・関東最大の戦国大名","ref":"https://ja.wikipedia.org/wiki/北条氏康","domain":"小田原"}],"sp":[],"b":1487,"d":1541,"title":"後北条氏二代","note":"北条姓に改姓・関東制覇の基礎を築く","ref":"https://ja.wikipedia.org/wiki/北条氏綱","domain":"小田原"}],"sp":[],"b":1432,"d":1519,"title":"後北条氏祖","note":"伊勢貞継の後裔(諸説あり)・伊豆韮山城主・戦国大名の先駆け・後北条氏初代","ref":"https://ja.wikipedia.org/wiki/北条早雲","domain":"小田原"}],"sp":[],"b":1285,"d":1365,"title":"政所執事","note":"足利尊氏に仕え政所執事となる・伊勢氏の基盤を築く","ref":"https://ja.wikipedia.org/wiki/伊勢貞継"}],"sp":[],"title":"伊勢氏祖","note":"平維衡の後裔(諸説あり)・伊勢氏の祖・室町幕府政所執事家の始祖","ref":"https://ja.wikipedia.org/wiki/伊勢氏"}],"sp":[]},{"id":"korehira_h","name":"平維将","g":"M","title":"平氏","ch":[{"id":"naokata_h","name":"平直方","g":"M","title":"上総介","note":"鎌倉に館を構える","ch":[{"id":"tokimasa_h","name":"北条時政","b":1138,"d":1215,"g":"M","title":"初代執権","note":"頼朝の舅・鎌倉幕府執権政治の祖","ch":[{"id":"masako_h","name":"北条政子","b":1157,"d":1225,"g":"F","title":"尼将軍","note":"源頼朝正室","ch":[],"sp":[]},{"id":"yoshitoki_h","name":"北条義時","b":1163,"d":1224,"g":"M","title":"二代執権","note":"承久の乱で朝廷に勝利・得宗家祖","ch":[{"id":"yasutoki_h","name":"北条泰時","b":1183,"d":1242,"g":"M","title":"三代執権","note":"御成敗式目制定","ch":[{"id":"tokiuji_h","name":"北条時氏","b":1203,"d":1230,"g":"M","title":"若狭守","note":"泰時の長男・早世","ch":[{"id":"tsunetoki_h","name":"北条経時","b":1224,"d":1246,"g":"M","title":"四代執権","ch":[],"sp":[]},{"id":"tokiyori_h","name":"北条時頼","b":1227,"d":1263,"g":"M","title":"五代執権","note":"建長寺創建・宝治合戦","ch":[{"id":"tokimune_h","name":"北条時宗","b":1251,"d":1284,"g":"M","title":"八代執権","note":"元寇(文永・弘安の役)を退ける","ch":[{"id":"sadatoki_h","name":"北条貞時","b":1272,"d":1311,"g":"M","title":"九代執権","note":"霜月騒動・平禅門の乱","ch":[{"id":"takatoki_h","name":"北条高時","b":1304,"d":1333,"g":"M","title":"十四代執権","note":"鎌倉幕府滅亡・東勝寺で自刃","ch":[],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]},{"id":"shigemori_d","name":"平繁盛","g":"M","title":"常陸大掾","note":"平国香の子・大掾氏の祖","ch":[{"id":"koremoto_d","name":"平維幹","g":"M","title":"常陸大掾","note":"多気大掾氏の祖","ch":[{"id":"tamemoto_d","name":"平為幹","g":"M","title":"常陸大掾","note":"前九年の役に参加","ch":[{"id":"naohira_d","name":"平直幹","g":"M","ch":[{"id":"yoshihira_d","name":"平義幹","g":"M","ch":[{"id":"yoshinaga_d","name":"馬場資幹","g":"M","ch":[{"id":"chikaie_d","name":"大掾親幹","g":"M","ch":[{"id":"tokihira_d","name":"大掾時幹","g":"M","ch":[{"id":"yoshitake_d","name":"大掾詮幹","g":"M","ch":[{"id":"mitsuie_d","name":"大掾満幹","g":"M","ch":[{"id":"kiyomoto_d","name":"大掾清幹","g":"M","ch":[{"id":"chikatoki_d","name":"大掾慶幹","g":"M","ch":[],"sp":[],"title":"常陸大掾","note":"佐竹に滅ぼされる・大掾氏滅亡","ref":"https://ja.wikipedia.org/wiki/大掾氏"}],"sp":[],"title":"常陸大掾","note":"水戸城を本拠とする","ref":"https://ja.wikipedia.org/wiki/大掾氏"}],"sp":[],"title":"常陸大掾","note":"応永年間・大掾氏中興","ref":"https://ja.wikipedia.org/wiki/大掾氏"}],"sp":[],"title":"常陸大掾","note":"南北朝後期","ref":"https://ja.wikipedia.org/wiki/大掾氏"}],"sp":[],"title":"常陸大掾","note":"南北朝時代","ref":"https://ja.wikipedia.org/wiki/大掾氏"}],"sp":[],"title":"常陸大掾","note":"資幹の子","ref":"https://ja.wikipedia.org/wiki/大掾氏"}],"sp":[],"title":"常陸大掾","note":"大掾資幹・府中城主・鎌倉御家人","ref":"https://ja.wikipedia.org/wiki/馬場資幹"},{"id":"yoshihiro_ta","name":"多気義幹","g":"M","ch":[],"sp":[],"title":"多気氏初代","note":"義幹の子・多気氏を継ぐ","ref":"https://ja.wikipedia.org/wiki/多気氏"}],"sp":[],"title":"常陸大掾","note":"多気大掾氏","ref":"https://ja.wikipedia.org/wiki/大掾氏"},{"id":"naganaga_ma","name":"真壁長幹","g":"M","ch":[{"id":"akihira_ma","name":"真壁明幹","g":"M","ch":[],"sp":[],"title":"真壁氏二代","ref":"https://ja.wikipedia.org/wiki/真壁氏"},{"id":"tomomoto_ma","name":"真壁友幹","g":"M","title":"真壁氏二代","ch":[{"id":"hisamoto_ma","name":"真壁久幹","g":"M","b":1522,"d":1589,"title":"闇轢軒","note":"（中略）鬼真壁の父","ch":[{"id":"ujimoto_ma","name":"真壁氏幹","g":"M","b":1550,"d":1622,"title":"真壁氏十九代","note":"鬼真壁・夜叉真壁・樫木棒を振るう","ch":[],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[],"title":"真壁氏祖","note":"平直幹の子・常陸真壁氏の祖・真壁城主","ref":"https://ja.wikipedia.org/wiki/真壁氏"}],"sp":[],"title":"常陸大掾","note":"多気大掾氏","ref":"https://ja.wikipedia.org/wiki/大掾氏"},{"id":"naoie_na","name":"行方直幹","g":"M","ch":[{"id":"muneie_na","name":"行方宗幹","g":"M","ch":[],"sp":[],"title":"行方氏二代","ref":"https://ja.wikipedia.org/wiki/行方氏"}],"sp":[],"title":"行方氏祖","note":"平為幹の子・常陸行方氏の祖・行方郡を領す","ref":"https://ja.wikipedia.org/wiki/行方氏"}],"sp":[]},{"id":"suehira_y","name":"平季幹","g":"M","ch":[],"sp":[],"title":"吉田氏祖","note":"平維幹の子・常陸吉田氏の祖・吉田城主","ref":"https://ja.wikipedia.org/wiki/常陸吉田氏"},{"id":"masahira_ka","name":"平政幹","g":"M","ch":[{"id":"narimasa_ka","name":"鹿島成幹","g":"M","ch":[],"sp":[],"title":"鹿島氏二代","ref":"https://ja.wikipedia.org/wiki/鹿島氏"}],"sp":[],"title":"鹿島氏祖","note":"平維幹の子・常陸鹿島氏の祖・鹿島城主","ref":"https://ja.wikipedia.org/wiki/鹿島氏"},{"id":"michihira_i","name":"平通幹","g":"M","ch":[],"sp":[],"title":"石川氏祖","note":"平維幹の子・常陸石川氏の祖","ref":"https://ja.wikipedia.org/wiki/常陸石川氏"}],"sp":[]},{"id":"yoshimasa_og","name":"平義政","g":"M","ch":[{"id":"shigemitsu_og","name":"小栗重成","g":"M","ch":[],"sp":[],"title":"小栗氏二代","note":"小栗城主","ref":"https://ja.wikipedia.org/wiki/小栗氏"}],"sp":[],"title":"小栗氏祖","note":"平繁盛の子(一説)・常陸小栗氏の祖","ref":"https://ja.wikipedia.org/wiki/小栗氏"},{"id":"koremasa_to","name":"平維良","g":"M","ch":[],"sp":[],"title":"豊田氏祖","note":"平繁盛の子・常陸豊田氏の祖","ref":"https://ja.wikipedia.org/wiki/豊田氏_(常陸国)"}],"sp":[]}],"sp":[]},{"id":"yoshimasa_t","name":"平良将","g":"M","title":"鎮守府将軍","note":"将門の父","ch":[{"id":"masakado","name":"平将門","b":903,"d":940,"g":"M","title":"新皇","note":"承平天慶の乱(平将門の乱)","ch":[],"sp":[]}],"sp":[]},{"id":"yoshifumi_t","name":"平良文","b":886,"d":952,"g":"M","title":"陸奥守","note":"坂東八平氏(千葉・三浦等)の祖","ch":[{"id":"tadayori_t","name":"平忠頼","b":930,"d":1019,"g":"M","title":"武蔵介","note":"千葉氏・秩父氏等の祖","ch":[{"id":"tadamasa_t","name":"平忠常","b":967,"d":1031,"g":"M","title":"上総介","note":"平忠常の乱・房総平氏の祖","ch":[{"id":"tsunetomo_c","name":"千葉常将","b":1010,"d":1076,"g":"M","title":"千葉氏祖","note":"房総を支配・千葉氏初代","ch":[{"id":"tsunetane_c","name":"千葉常胤","b":1118,"d":1201,"g":"M","title":"下総権介","note":"鎌倉幕府創設に尽力した有力御家人・坂東八平氏(千葉)","ch":[{"id":"tanemasa_c","name":"千葉胤正","g":"M","title":"長男","note":"千葉氏宗家","ch":[{"id":"naritane_c","name":"千葉成胤","g":"M","ch":[{"id":"tanetsuna_c","name":"千葉胤綱","g":"M","ch":[{"id":"tokitane_c","name":"千葉時胤","g":"M","ch":[{"id":"yoritane_c","name":"千葉頼胤","g":"M","ch":[{"id":"munetane_c","name":"千葉宗胤","g":"M","title":"千葉氏正統","ch":[],"sp":[]},{"id":"tanemune_c","name":"千葉胤宗","g":"M","title":"家督争い","ch":[],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]},{"id":"morotsune_s","name":"相馬師常","g":"M","title":"次男","note":"奥州相馬氏祖","ch":[{"id":"yoshitane_s1","name":"相馬義胤","g":"M","title":"相馬氏二代","ch":[{"id":"tanetsuna_s","name":"相馬胤綱","g":"M","title":"相馬氏三代","ch":[{"id":"moritane_s","name":"相馬盛胤","g":"M","b":1524,"d":1601,"title":"相馬氏十五代","note":"（中略）戦国大名","ch":[{"id":"yoshitane_s2","name":"相馬義胤","g":"M","b":1548,"d":1620,"title":"相馬氏十六代","note":"伊達政宗と抗争","ch":[],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]},{"id":"tanemori_t","name":"武石胤盛","g":"M","title":"三男","note":"武石氏祖","ch":[],"sp":[]},{"id":"tanenobu_o","name":"大須賀胤信","g":"M","title":"四男","note":"大須賀氏祖","ch":[],"sp":[]},{"id":"tanemichi_k","name":"国分胤通","g":"M","title":"五男","note":"国分氏祖","ch":[],"sp":[]},{"id":"taneyori_t","name":"東胤頼","g":"M","title":"六男","note":"東氏祖・歌人","ch":[{"id":"shigetane_t","name":"東重胤","g":"M","ch":[{"id":"taneyuki_t","name":"東胤行","g":"M","ch":[],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]},{"id":"tsunehira_kz","name":"平常衡","g":"M","ch":[{"id":"tsunenaga_kz","name":"上総常長","g":"M","ch":[{"id":"tsuneie_kz","name":"上総常家","g":"M","ch":[{"id":"hirotsune_kz","name":"上総広常","g":"M","ch":[{"id":"yoshitsune_kz","name":"上総能常","g":"M","ch":[],"sp":[],"title":"上総氏","note":"広常の子・父の死後は衰退","ref":"https://ja.wikipedia.org/wiki/上総氏"}],"sp":[],"b":1130,"d":1183,"title":"上総権介","note":"頼朝挙兵に最大兵力で参陣・2万騎を率いる・梶原景時に謀殺される","ref":"https://ja.wikipedia.org/wiki/上総広常"}],"sp":[],"title":"上総権介","note":"上総氏三代","ref":"https://ja.wikipedia.org/wiki/上総氏"},{"id":"tsunekatsu_in","name":"印東常晴","g":"M","ch":[],"sp":[],"title":"印東氏祖","note":"上総常長の子・印東氏の祖・上総国印東郷を領す","ref":"https://ja.wikipedia.org/wiki/印東氏"}],"sp":[],"title":"上総権介","note":"上総氏二代","ref":"https://ja.wikipedia.org/wiki/上総氏"},{"id":"tsunemoto_ik","name":"伊北常仲","g":"M","ch":[],"sp":[],"title":"伊北氏祖","note":"常衡の子・上総国伊北荘を領す","ref":"https://ja.wikipedia.org/wiki/上総氏"}],"sp":[],"title":"上総氏祖","note":"平忠常の子・上総氏の祖・上総国を領す","ref":"https://ja.wikipedia.org/wiki/上総氏"}],"sp":[]},{"id":"masamura_t","name":"平将村","g":"M","title":"平氏","note":"三浦氏等の祖","ch":[{"id":"yoshimura_m","name":"三浦義明","b":1092,"d":1180,"g":"M","title":"相模介","note":"三浦大介・衣笠城合戦で討死・坂東八平氏(三浦)","ch":[{"id":"yoshizumi_m","name":"三浦義澄","b":1127,"d":1200,"g":"M","title":"相模守","note":"鎌倉幕府有力御家人十三人","ch":[],"sp":[]}],"sp":[]}],"sp":[]},{"id":"shigeyori_t","name":"平重頼","g":"M","title":"秩父氏祖","note":"秩父氏・畠山氏・河越氏等の祖","ch":[{"id":"shigeyoshi_h","name":"畠山重忠","b":1164,"d":1205,"g":"M","title":"畠山氏","note":"鎌倉幕府初期の有力御家人・坂東八平氏(秩父平氏)","domain":"武蔵国","ch":[],"sp":[]}],"sp":[]}],"sp":[]},{"id":"sanehira_d","name":"土肥実平","b":1130,"d":1191,"g":"M","title":"土肥氏","note":"源頼朝の挙兵に従う・坂東八平氏","ch":[],"sp":[]}],"sp":[]},{"id":"yoshikane_t","name":"平良兼","g":"M","ch":[],"sp":[],"title":"上総介","note":"平高望の子・下総国に勢力を持つ・将門の叔父","ref":"https://ja.wikipedia.org/wiki/平良兼"},{"id":"yoshimochi_t","name":"平良茂","g":"M","ch":[],"sp":[],"title":"下総権介","note":"平高望の子・将門の乱で将門側と対立","ref":"https://ja.wikipedia.org/wiki/平良茂"}],"sp":[]}],"sp":[]}],"sp":[]}]}],"sp":[]}],"sp":[]},{"id":"jito","name":"持統天皇","b":645,"d":703,"g":"F","title":"第41代天皇","note":"天武天皇の皇后・藤原京遷都・大宝律令の基礎","ref":"https://ja.wikipedia.org/wiki/持統天皇","ch":[],"sp":[]}],"sp":[]},{"id":"tenmu","name":"天武天皇","b":631,"d":686,"g":"M","title":"第40代天皇","note":"壬申の乱・天皇号制定","ch":[],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]},{"id":"yomei","name":"用明天皇","b":540,"d":587,"g":"M","title":"第31代天皇","note":"聖徳太子の父","ch":[{"id":"shotoku","name":"聖徳太子","b":574,"d":622,"g":"M","title":"摂政","note":"十七条憲法・冠位十二階・非即位","ch":[],"sp":[]}],"sp":[]},{"id":"suiko","name":"推古天皇","b":554,"d":628,"g":"F","title":"第33代天皇","note":"日本初の女帝・聖徳太子を摂政に任命","ref":"https://ja.wikipedia.org/wiki/推古天皇","ch":[],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]};
+
+    const DATA_F = {"id":"kamatari","name":"中臣鎌足(藤原鎌足)","b":614,"d":669,"g":"M","title":"内大臣","note":"大化改新の功臣・藤原氏の祖","ref":"https://ja.wikipedia.org/wiki/中臣鎌足","ch":[{"id":"fuhito","name":"藤原不比等","b":659,"d":720,"g":"M","title":"右大臣","note":"大宝律令・藤原氏の基礎を築く","ref":"https://ja.wikipedia.org/wiki/藤原不比等","ch":[{"id":"muchimaro","name":"藤原武智麻呂","b":680,"d":737,"g":"M","title":"左大臣","note":"藤原四兄弟・南家祖","ref":"https://ja.wikipedia.org/wiki/藤原武智麻呂","ch":[{"id":"toyonari","name":"藤原豊成","g":"M","b":704,"d":766,"title":"右大臣","note":"南家・武智麻呂の長男・横死した弟仲麻呂に代わり復権","mother":"貞媛","sp":[{"name":"藤原百能","t":"正室","note":"藤原麻呂の娘"}],"ch":[{"id":"tsugutada","name":"藤原継縄","g":"M","b":727,"d":796,"title":"右大臣","note":"南家","ch":[],"sp":[]}]},{"id":"nakamaro","name":"藤原仲麻呂","g":"M","b":706,"d":764,"title":"太師(太政大臣)","note":"恵美押勝・藤原仲麻呂の乱で敗死","mother":"貞媛","ch":[{"id":"masatsugu","name":"藤原真従","g":"M","title":"右官少将","note":"藤原仲麻呂の乱で敗死","ch":[],"sp":[]},{"id":"asamakari","name":"藤原朝狩","g":"M","d":764,"title":"参議","note":"藤原仲麻呂の乱で敗死","ch":[],"sp":[]},{"id":"shikio","name":"藤原刷雄","g":"M","title":"大学頭","note":"藤原仲麻呂の乱で流罪（死罪免除）","ch":[],"sp":[]}],"sp":[]},{"id":"otomaro","name":"藤原乙麻呂","g":"M","d":760,"title":"武部卿","note":"武智麻呂の子","ch":[{"id":"korekimi","name":"藤原是公","g":"M","b":727,"d":789,"title":"右大臣","note":"桓武天皇の腹心・南家中興","ch":[],"sp":[]}],"sp":[]},{"id":"kosemaro","name":"藤原巨勢麻呂","g":"M","d":764,"title":"参議","note":"武智麻呂の子","ch":[],"sp":[]}]},{"id":"fusasaki","name":"藤原房前","b":681,"d":737,"g":"M","title":"参議","note":"藤原四兄弟・北家祖","ref":"https://ja.wikipedia.org/wiki/藤原房前","ch":[{"id":"matate","name":"藤原真楯","b":715,"d":766,"g":"M","title":"大納言","ref":"https://ja.wikipedia.org/wiki/藤原真楯","ch":[{"id":"uchiomaro","name":"藤原内麻呂","b":756,"d":812,"g":"M","title":"右大臣","ref":"https://ja.wikipedia.org/wiki/藤原内麻呂","ch":[{"id":"fuyutsugu","name":"藤原冬嗣","b":775,"d":826,"g":"M","title":"左大臣","note":"蔵人頭","ref":"https://ja.wikipedia.org/wiki/藤原冬嗣","ch":[{"id":"nagara","name":"藤原長良","b":802,"d":856,"g":"M","title":"権中納言","ref":"https://ja.wikipedia.org/wiki/藤原長良","ch":[]},{"id":"yoshifusa","name":"藤原良房","b":804,"d":872,"g":"M","title":"摂政・太政大臣","note":"人臣初の摂政","ref":"https://ja.wikipedia.org/wiki/藤原良房","ch":[{"id":"mototsune","name":"藤原基経","b":836,"d":891,"g":"M","title":"関白・太政大臣","note":"初代関白・阿衡の紛議","adopted":"良房の養子(長良の三男)","ref":"https://ja.wikipedia.org/wiki/藤原基経","ch":[{"id":"tokihira","name":"藤原時平","b":871,"d":909,"g":"M","title":"左大臣","note":"菅原道真を大宰府へ左遷","ref":"https://ja.wikipedia.org/wiki/藤原時平","ch":[]},{"id":"tadahira","name":"藤原忠平","b":880,"d":949,"g":"M","title":"摂政・関白・太政大臣","note":"延喜・天暦の治","ref":"https://ja.wikipedia.org/wiki/藤原忠平","ch":[{"id":"saneyori","name":"藤原実頼","b":900,"d":970,"g":"M","title":"摂政・関白・太政大臣","note":"小野宮流祖","ref":"https://ja.wikipedia.org/wiki/藤原実頼","ch":[]},{"id":"morosuke","name":"藤原師輔","b":909,"d":960,"g":"M","title":"右大臣","note":"九条流祖・摂関家の嫡流","ref":"https://ja.wikipedia.org/wiki/藤原師輔","ch":[{"id":"koretada","name":"藤原伊尹","b":924,"d":972,"g":"M","title":"摂政・太政大臣","ref":"https://ja.wikipedia.org/wiki/藤原伊尹","ch":[]},{"id":"kanemichi","name":"藤原兼通","b":925,"d":977,"g":"M","title":"関白・太政大臣","ref":"https://ja.wikipedia.org/wiki/藤原兼通","ch":[]},{"id":"kaneie","name":"藤原兼家","b":929,"d":990,"g":"M","title":"摂政・関白・太政大臣","note":"寛和の変で外孫の一条天皇を擁立","ref":"https://ja.wikipedia.org/wiki/藤原兼家","ch":[{"id":"michitaka","name":"藤原道隆","b":953,"d":995,"g":"M","title":"摂政・関白・内大臣","note":"中宮定子の父","ref":"https://ja.wikipedia.org/wiki/藤原道隆","ch":[{"id":"korechika","name":"藤原伊周","b":974,"d":1010,"g":"M","title":"内大臣","note":"長徳の変で左遷","ref":"https://ja.wikipedia.org/wiki/藤原伊周","ch":[]}]},{"id":"michikane","name":"藤原道兼","b":961,"d":995,"g":"M","title":"関白・右大臣","note":"七日関白","ref":"https://ja.wikipedia.org/wiki/藤原道兼","ch":[]},{"id":"michinaga","name":"藤原道長","b":966,"d":1028,"g":"M","title":"摂政・太政大臣","note":"わが世とぞ思ふ・摂関政治の絶頂","ref":"https://ja.wikipedia.org/wiki/藤原道長","ch":[{"id":"yorimichi","name":"藤原頼通","b":992,"d":1074,"g":"M","title":"摂政・関白・太政大臣","note":"平等院鳳凰堂建立","ref":"https://ja.wikipedia.org/wiki/藤原頼通","ch":[{"id":"morozane","name":"藤原師実","b":1042,"d":1101,"g":"M","title":"摂政・関白・太政大臣","ref":"https://ja.wikipedia.org/wiki/藤原師実","ch":[{"id":"moromichi","name":"藤原師通","b":1062,"d":1099,"g":"M","title":"関白・内大臣","ref":"https://ja.wikipedia.org/wiki/藤原師通","ch":[{"id":"tadazane","name":"藤原忠実","b":1078,"d":1162,"g":"M","title":"摂政・関白・太政大臣","note":"白河法皇と対立・保元の乱の遠因","ref":"https://ja.wikipedia.org/wiki/藤原忠実","ch":[{"id":"tadamichi","name":"藤原忠通","b":1097,"d":1164,"g":"M","title":"摂政・関白・太政大臣","note":"保元の乱で天皇方・五摂家(近衛・九条等)の祖","ref":"https://ja.wikipedia.org/wiki/藤原忠通","ch":[]},{"id":"yorinaga","name":"藤原頼長","b":1120,"d":1156,"g":"M","title":"左大臣","note":"悪左府・保元の乱で敗死","ref":"https://ja.wikipedia.org/wiki/藤原頼長","ch":[]}]}]}]}]}]}]}]}]}]}]}]}]}]},{"id":"nagate","name":"藤原永手","g":"M","b":714,"d":771,"title":"左大臣","note":"称徳天皇〜光仁天皇期の最高権力者","mother":"牟漏女王","ch":[],"sp":[]},{"id":"chihiro_midate","name":"藤原千尋","g":"M","b":715,"d":737,"title":"参議","note":"御楯（みだて）と改名するも天然痘で早世","mother":"牟漏女王","ch":[],"sp":[]},{"id":"uona","name":"藤原魚名","g":"M","b":721,"d":783,"title":"左大臣","note":"魚名流の祖・平将門を討った藤原秀郷などの遠祖","mother":"片野朝臣娘","ch":[{"id":"washitori","name":"藤原鷲取","g":"M","title":"常陸介","ch":[{"id":"tototsugu","name":"藤原藤嗣","g":"M","title":"参議","note":"秀郷流の祖となる系統","ch":[],"sp":[]}],"sp":[]},{"id":"sueshige","name":"藤原末茂","g":"M","title":"陸奥守","note":"伊達氏等の祖とも言われる（異説あり）","ch":[],"sp":[]},{"id":"fujinari","name":"藤原藤成","g":"M","b":776,"d":822,"title":"下野守","note":"秀郷流の祖（藤原秀郷の高祖父）","ch":[{"id":"toyosawa","name":"藤原豊沢","g":"M","title":"下野権守","note":"秀郷の祖父","ch":[{"id":"murao","name":"藤原村雄","g":"M","title":"下野大掾","note":"秀郷の父","ch":[{"id":"hidesato","name":"藤原秀郷","g":"M","title":"鎮守府将軍","note":"俵藤太・将門の乱を平定・奥州藤原氏等の遠祖","ch":[{"id":"chiharu","name":"藤原千晴","g":"M","title":"右馬助","note":"安和の変で流罪","ch":[{"id":"chikiyo","name":"藤原千清","g":"M","title":"左衛門尉","ch":[{"id":"masayori","name":"藤原正頼","g":"M","title":"大舎人","ch":[{"id":"yoritoo","name":"藤原頼遠","g":"M","title":"五郎太大夫","note":"下総から陸奥へ移住","ch":[{"id":"tsunekiyo","name":"藤原経清","g":"M","d":1056,"title":"亘理権大夫","note":"奥州藤原氏祖・前九年の役で死罪","mother":"源頼信娘","sp":[],"ch":[{"id":"kiyohira","name":"藤原清衡","g":"M","b":1056,"d":1128,"title":"奥州藤原氏初代","note":"中尊寺金色堂造営・鎮守府将軍","ch":[{"id":"motohira","name":"藤原基衡","g":"M","b":1105,"d":1157,"title":"奥州藤原氏二代","note":"毛越寺造営","mother":"清原氏や蝦夷の娘","ch":[{"id":"hidehira","name":"藤原秀衡","g":"M","b":1122,"d":1187,"title":"奥州藤原氏三代","note":"鎮守府将軍・源義経を無礼","mother":"安倍宗任息女","sp":[],"ch":[{"id":"kunihira","name":"藤原国衡","g":"M","d":1189,"title":"阿津賀志山討死","note":"泰衡の異母兄","ch":[],"sp":[]},{"id":"yasuhira","name":"藤原泰衡","g":"M","b":1155,"d":1189,"title":"奥州藤原氏四代","note":"源義経を討つが頼朝に滅ぼされる","mother":"藤原基成娘","ch":[],"sp":[]},{"id":"tadahira","name":"藤原忠衡","g":"M","b":1167,"d":1189,"title":"三男","note":"義経保護を主張し泰衡に討たれる","mother":"藤原基成娘","ch":[],"sp":[]},{"id":"takahira_o","name":"藤原高衡","g":"M","d":1189,"note":"奥州藤原氏四男","ch":[],"sp":[]}]}],"sp":[]}],"sp":[]}]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]}],"sp":[]},{"id":"torikai","name":"藤原鳥養","g":"M","note":"房前の子","mother":"春日倉首老娘","ch":[],"sp":[]}]},{"id":"umakai","name":"藤原宇合","b":694,"d":737,"g":"M","title":"参議・式部卿","note":"藤原四兄弟・式家祖","ref":"https://ja.wikipedia.org/wiki/藤原宇合","ch":[{"id":"hirotsugu","name":"藤原広嗣","b":715,"d":740,"g":"M","title":"大宰少弐","note":"藤原広嗣の乱","ref":"https://ja.wikipedia.org/wiki/藤原広嗣","ch":[]},{"id":"momokawa","name":"藤原百川","b":732,"d":779,"g":"M","title":"参議","note":"桓武天皇擁立の功臣","ref":"https://ja.wikipedia.org/wiki/藤原百川","ch":[]}]},{"id":"maro","name":"藤原麻呂","b":695,"d":737,"g":"M","title":"参議・兵部卿","note":"藤原四兄弟・京家祖","ref":"https://ja.wikipedia.org/wiki/藤原麻呂","ch":[{"id":"hamanari","name":"藤原浜成","g":"M","b":724,"d":790,"title":"参議","note":"氷上川継の乱に連座し流罪・歌学書「歌経標式」","mother":"稲葉気豆娘","ch":[],"sp":[]},{"id":"momoyoshi","name":"藤原百能","g":"F","b":720,"d":782,"title":"尚侍","note":"藤原豊成（南家）の妻・橘古那可智と共に後宮で権勢を振るう","mother":"当麻氏娘","ch":[],"sp":[]}]},{"id":"miyako_f","name":"藤原宮子","d":754,"g":"F","note":"文武天皇夫人・聖武天皇の母","ref":"https://ja.wikipedia.org/wiki/藤原宮子","ch":[]},{"id":"komyo_f","name":"光明皇后(安宿媛)","b":701,"d":760,"g":"F","note":"聖武天皇の皇后・人臣初の皇后","ref":"https://ja.wikipedia.org/wiki/光明皇后","ch":[]}]}]};
+
+    // State
+    const state = { attrs: new Set(["years", "title", "spouses"]), collapsed: new Set(), selected: null, theme: "wafuu" };
+    const svg = d3.select("#tree-svg"), container = document.getElementById("tree-container");
+    const width = container.clientWidth, height = container.clientHeight;
+    const g = svg.append("g");
+    const zoom = d3.zoom().scaleExtent([0.1, 3]).on("zoom", e => g.attr("transform", e.transform));
+    svg.call(zoom);
+
+    // Assign Fujiwara branches recursively
+    function assignBranch(node, currentBranch) {
+      let b = currentBranch;
+      if (node.note) {
+        if (node.note.includes('南家祖')) b = '南家';
+        else if (node.note.includes('北家祖')) b = '北家';
+        else if (node.note.includes('式家祖')) b = '式家';
+        else if (node.note.includes('京家祖')) b = '京家';
+      }
+      if (b) node.branch = b;
+      if (node.ch) node.ch.forEach(c => assignBranch(c, b));
+    }
+    assignBranch(DATA_F, null);
+
+    // Build hierarchy for multiple roots
+    const root = d3.hierarchy(DATA, d => d.ch);
+    const rootF = d3.hierarchy(DATA_F, d => d.ch);
+    const roots = [root, rootF];
+
+    roots.forEach(r => {
+      r.descendants().forEach(d => { d._ch = d.children; });
+    });
+
+
+    const nodeW = 70, nodeH = 160, spW = 60;
+
+    function getAllNodes() { return root.descendants().concat(rootF.descendants()); }
+    function getAllLinks() { return root.links().concat(rootF.links()); }
+
+    function updateAll(source) {
+      // 1. Calculate positions for both trees
+      const tree = d3.tree().nodeSize([nodeW + 20, nodeH + 60]).separation((a, b) => a.parent === b.parent ? 1 : 1.2);
+      tree(root);
+      tree(rootF);
+
+      // 2. Align Kamatari (Fujiwara) with Emperor Tenji
+      const tenji = root.descendants().find(d => d.data.id === 'tenji');
+      const kamatari = rootF.descendants().find(d => d.data.id === 'kamatari');
+      if (tenji && kamatari && typeof tenji.y === 'number' && typeof kamatari.y === 'number') {
+        const yOffset = tenji.y - kamatari.y;
+        if (!isNaN(yOffset)) {
+          rootF.descendants().forEach(d => { if (typeof d.y === 'number') d.y += yOffset; });
+        }
+      }
+
+      // 3. Ensure Fujiwara tree is on the left
+      const impNodes = root.descendants().filter(d => typeof d.x === 'number');
+      const fujNodes = rootF.descendants().filter(d => typeof d.x === 'number');
+      let minX_imp = d3.min(impNodes, d => d.x) || 0;
+      let maxX_fuj = d3.max(fujNodes, d => d.x) || 0;
+      const xOffset = minX_imp - maxX_fuj - 200;
+      if (!isNaN(xOffset)) {
+        rootF.descendants().forEach(d => { if (typeof d.x === 'number') d.x += xOffset; });
+      }
+
+      // 4. Draw trees independently to avoid ID/source conflicts
+      drawTree(root, source || root, 0);
+      drawTree(rootF, source || rootF, 1);
+    }
+
+    function drawTree(hierarchyRoot, source, idx) {
+      const dur = 500;
+      const nodes = hierarchyRoot.descendants().filter(d => typeof d.x === 'number' && typeof d.y === 'number');
+      const links = hierarchyRoot.links().filter(l => typeof l.source.x === 'number' && typeof l.target.x === 'number');
+
+      // Safe origin coordinates for animation
+      const o = { x: source.x0 || source.x || 0, y: source.y0 || source.y || 0 };
+
+      // Ensure all node objects are uniquely identified during joins by using their data.id
+      const node = g.selectAll('g.node.tree-' + idx).data(nodes, d => d.data.id);
+
+      const nodeEnter = node.enter().append('g')
+        .attr('class', d => {
+          let c = 'node node-group tree-' + idx;
+          if (d.data.g === 'F') c += ' node-female';
+          if (d.data.adopted) c += ' node-adopted';
+          if (d.data.sn) c += ' node-shogun';
+          return c;
+        })
+        .attr('transform', d => `translate(${o.x},${o.y})`);
+
+      const nodeUpdate = nodeEnter.merge(node)
+        .on('click', (e, d) => {
+          e.stopPropagation();
+          showDetail(d.data);
+        })
+        .on('dblclick', (e, d) => {
+          e.stopPropagation();
+          if (d.children) { d._ch = d.children; d.children = null; }
+          else { d.children = d._ch; }
+          updateAll(d);
+        });
+
+      nodeUpdate.transition().duration(dur)
+        .attr('transform', d => `translate(${d.x},${d.y})`);
+
+      nodeEnter.append('rect').attr('class', 'node-rect').attr('x', -28).attr('y', -70).attr('width', 56).attr('height', 140);
+
+      function getBadgeInfo(data) {
+        if (data.sn) return { cssClass: 'shogun-badge-bg', label: ordinal(data.sn) + '代将軍' };
+        if (data.title && /第\d+代天皇|北朝.*天皇/.test(data.title)) {
+          const m = data.title.match(/第(\d+)代/);
+          return { cssClass: 'emperor-badge-bg', label: m ? '第' + m[1] + '代天皇' : data.title };
+        }
+        if (data.title && data.title.includes('天皇') && !data.title.includes('摂政')) return { cssClass: 'emperor-badge-bg', label: data.title };
+        if (data.title && data.title.includes('征夷大将軍') && data.name && /^足利/.test(data.name)) return { cssClass: 'muromachi-badge-bg', label: '室町将軍' };
+        if (data.title && data.title.includes('征夷大将軍') && data.name && /^源/.test(data.name)) return { cssClass: 'kamakura-badge-bg', label: '鎌倉将軍' };
+        if (data.title && data.title.includes('征夷大将軍') && data.name && data.name.includes('義仲')) return { cssClass: 'kamakura-badge-bg', label: '征夷大将軍' };
+
+        if (data.branch === '南家') return { cssClass: 'nanke-badge-bg', label: '藤原南家' };
+        if (data.branch === '北家') return { cssClass: 'hokke-badge-bg', label: '藤原北家' };
+        if (data.branch === '式家') return { cssClass: 'shikike-badge-bg', label: '藤原式家' };
+        if (data.branch === '京家') return { cssClass: 'kyoke-badge-bg', label: '藤原京家' };
+
+        return null;
+      }
+
+      function ordinal(n) { const t = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二', '十三', '十四', '十五']; return t[n - 1] || n; }
+
+      // node-box removed for rendering consistency
+
+      nodeEnter.each(function (d) {
+        const badge = getBadgeInfo(d.data);
+        if (!badge) return;
+        const el = d3.select(this);
+        el.append('rect').attr('class', badge.cssClass).attr('x', -28).attr('y', -70).attr('width', 56).attr('height', 16).attr('rx', 3);
+        el.append('text').attr('class', 'shogun-badge').attr('x', 0).attr('y', -58).attr('text-anchor', 'middle').text(badge.label);
+      });
+
+      nodeEnter.each(function (d) {
+        const txt = d3.select(this).append('text').attr('class', 'node-name').attr('text-anchor', 'middle').attr('x', 0);
+        const chars = d.data.name.split('');
+        const hasBadge = getBadgeInfo(d.data) !== null;
+        const startY = -50 + (hasBadge ? 16 : 0);
+        chars.forEach((c, i) => {
+          txt.append('tspan').attr('x', 0).attr('y', startY + i * 16).text(c);
+        });
+      });
+
+      nodeEnter.each(function (d) {
+        const hasBadge = getBadgeInfo(d.data) !== null;
+        const cy = hasBadge ? 55 : 45;
+        if (d.data.b || d.data.d) {
+          const b = d.data.b ? (d.data.b < 0 ? 'BC' + Math.abs(d.data.b) : d.data.b) : '?';
+          const dd = d.data.d ? (d.data.d < 0 ? 'BC' + Math.abs(d.data.d) : d.data.d) : '?';
+          d3.select(this).append('text').attr('class', 'node-attr attr-years').attr('x', 0).attr('y', cy).text(b + '-' + dd);
+        }
+      });
+
+      nodeEnter.append('svg:title').text(d => d.data.name + (d.data.title ? ' (' + d.data.title + ')' : ''));
+
+      nodeEnter.filter(d => d._ch || d.children).append('circle')
+        .attr('class', 'expand-indicator').attr('cx', 0).attr('cy', 60).attr('r', 4);
+
+      const spNode = nodeEnter.selectAll('g.sp').data(d => d.data.sp || []).enter().append('g')
+        .attr('transform', (d, i) => `translate(${spW}, ${i * 45 - 20})`);
+
+      spNode.append('rect').attr('class', d => d.t === '正室' ? 'spouse-rect main-wife' : 'spouse-rect').attr('x', -10).attr('y', -30).attr('width', 20).attr('height', 60).attr('rx', 3);
+      spNode.append('text').attr('class', 'spouse-name').attr('text-anchor', 'middle').attr('x', 0).attr('y', -18)
+        .selectAll('tspan').data(d => d.name.split('')).enter().append('tspan').attr('x', 0).attr('dy', (d, i) => i === 0 ? 0 : 11).text(d => d);
+
+      nodeUpdate.classed('highlight-node', d => state.selected && state.selected.id === d.data.id);
+
+      nodeUpdate.select('.expand-indicator').attr('fill', d => d.children ? 'var(--node-bg)' : 'var(--node-border)');
+
+      const nodeExit = node.exit().transition().duration(dur)
+        .attr('transform', d => `translate(${o.x},${o.y})`).attr('opacity', 0).remove();
+
+      const link = g.selectAll('path.link.tree-' + idx).data(links, d => d.target.data.id);
+      const linkEnter = link.enter().insert('path', 'g')
+        .attr('class', d => d.target.data.adopted ? 'link link-adopted tree-' + idx : 'link link-real tree-' + idx)
+        .attr('d', d => `M${o.x},${o.y} V${o.y} H${o.x} V${o.y}`);
+
+      const linkUpdate = linkEnter.merge(link).transition().duration(dur)
+        .attr('d', d => {
+          const sy = d.source.y + 70, ty = d.target.y - 70, my = (sy + ty) / 2;
+          return `M${d.source.x},${sy}V${my}H${d.target.x}V${ty}`;
+        });
+
+      const linkExit = link.exit().transition().duration(dur)
+        .attr('d', d => `M${o.x},${o.y} V${o.y} H${o.x} V${o.y}`).remove();
+
+      g.selectAll('path.sp-link.tree-' + idx).remove();
+      nodes.forEach(d => {
+        if (d.data.sp && d.data.sp.length > 0) {
+          d.data.sp.forEach((sp, i) => {
+            const cls = sp.t === '正室' ? 'link-marriage-sei' : 'link-marriage-soku';
+            g.append('path').attr('class', `sp-link ${cls} tree-${idx}`)
+              .attr('d', `M${d.x + 20},${d.y + i * 45 - 20} H${d.x + 50}`);
+          });
+        }
+      });
+
+      nodes.forEach(d => { d.x0 = d.x; d.y0 = d.y; });
+    }
+
+    // Search and detail
+    function showDetail(data) {
+      state.selected = data;
+      updateAll();
+      const p = document.getElementById("panel-content");
+      let h = `<div class="detail-name">${data.name}</div>`;
+      h += `<div class="detail-section"><h3>基本情報</h3>`;
+      if (data.sn) h += `<div class="detail-row"><span class="detail-label">将軍</span><span>${ordinal(data.sn)}代</span></div>`;
+      if (data.b) h += `<div class="detail-row"><span class="detail-label">生年</span><span>${data.b}年</span></div>`;
+      if (data.d) h += `<div class="detail-row"><span class="detail-label">没年</span><span>${data.d}年</span></div>`;
+      if (data.b && data.d) h += `<div class="detail-row"><span class="detail-label">享年</span><span>${data.d - data.b}歳</span></div>`;
+      if (data.g) h += `<div class="detail-row"><span class="detail-label">性別</span><span>${data.g === "M" ? "男" : "女"}</span></div>`;
+      if (data.title) h += `<div class="detail-row"><span class="detail-label">官位</span><span>${data.title}</span></div>`;
+      if (data.court) h += `<div class="detail-row"><span class="detail-label">位階</span><span>${data.court}</span></div>`;
+      if (data.domain) h += `<div class="detail-row"><span class="detail-label">領地</span><span>${data.domain}</span></div>`;
+      if (data.mother) h += `<div class="detail-row"><span class="detail-label">母</span><span>${data.mother}</span></div>`;
+      if (data.adopted) h += `<div class="detail-row"><span class="detail-label">養子</span><span>${data.adopted}</span></div>`;
+      if (data.note) h += `<div class="detail-row"><span class="detail-label">備考</span><span>${data.note}</span></div>`;
+      if (data.ref) h += `<div class="detail-row"><span class="detail-label">参考</span><span><a href="${data.ref}" target="_blank" rel="noopener" style="color:#4a90d9;text-decoration:underline;">${data.ref.replace(/https?:\/\/(ja\.)?wikipedia\.org\/wiki\//, 'Wikipedia: ').replace(/%[0-9A-F]{2}/g, decodeURIComponent)}</a></span></div>`;
+      h += `</div>`;
+      if (data.sp && data.sp.length > 0) {
+        h += `<div class="detail-section"><h3>配偶者</h3>`;
+        data.sp.forEach(s => {
+          const cls = s.t === "正室" || s.t === "継室" ? "spouse-seishitsu" : "spouse-sokushitsu";
+          h += `<div class="spouse-item ${cls}"><strong>${s.name}</strong> (${s.t})${s.note ? " — " + s.note : ""}</div>`;
+        });
+        h += `</div>`;
+      }
+      if (data.ch && data.ch.length > 0) {
+        h += `<div class="detail-section"><h3>子</h3>`;
+        data.ch.forEach(c => { h += `<div class="detail-row"><span>${c.name}</span><span>${c.b || ""}${c.d ? "-" + c.d : ""}</span></div>`; });
+        h += `</div>`;
+      }
+      p.innerHTML = h;
+      document.getElementById("detail-panel").classList.add("active");
+    }
+
+    document.getElementById("search-input").addEventListener("input", function (e) {
+      const q = e.target.value;
+      const res = document.getElementById("search-results");
+      if (q.length < 1) { res.style.display = "none"; return; }
+
+      const matched = getAllNodes().filter(n => n.data.name.includes(q) || (n.data.note && n.data.note.includes(q))).slice(0, 5);
+      if (matched.length > 0) {
+        res.innerHTML = matched.map(n => `<div class="search-item" data-id="${n.data.id}">${n.data.name}</div>`).join("");
+        res.style.display = "block";
+        res.querySelectorAll(".search-item").forEach(el => {
+          el.addEventListener("click", function () {
+            const id = this.getAttribute("data-id");
+            res.style.display = "none";
+            document.getElementById("search-input").value = "";
+            let targetNode = expandPathTo(id);
+            if (targetNode) {
+              updateAll(roots[0]);
+              setTimeout(() => {
+                const tv = typeof targetNode.x === 'number' ? targetNode : { x: 0, y: 0 };
+                const t = d3.zoomIdentity.translate(width / 2 - tv.x, height / 3 - tv.y).scale(0.8);
+                svg.transition().duration(700).call(zoom.transform, t);
+                showDetail(targetNode.data);
+              }, 600);
+            }
+          });
+        });
+      } else {
+        res.style.display = "none";
+      }
+    });
+
+    document.getElementById("jump-select").addEventListener("change", function () {
+      const id = this.value; if (!id) return;
+      const targetNode = expandPathTo(id);
+      if (targetNode) {
+        updateAll(roots[0]);
+        setTimeout(() => {
+          const tv = typeof targetNode.x === 'number' ? targetNode : { x: 0, y: 0 };
+          const t = d3.zoomIdentity.translate(width / 2 - tv.x, height / 3 - tv.y).scale(0.8);
+          svg.transition().duration(700).call(zoom.transform, t);
+          showDetail(targetNode.data);
+        }, 600);
+      }
+      this.value = "";
+    });
+
+    // Recursive collapse/expand logic
+    function collapseAllRec(n) {
+      if (Array.isArray(n)) { n.forEach(collapseAllRec); return; }
+      if (n.children) { n.children.forEach(collapseAllRec); n._ch = n.children; n.children = null; }
+    }
+
+    function expandAllRec(n) {
+      if (Array.isArray(n)) { n.forEach(expandAllRec); return; }
+      if (!n.children && n._ch) { n.children = n._ch; }
+      if (n.children) { n.children.forEach(expandAllRec); }
+    }
+
+    function findPathRec(n, targetId) {
+      if (n.data.id === targetId) return [n];
+      var kids = n.children || n._ch || [];
+      for (var i = 0; i < kids.length; i++) {
+        var p = findPathRec(kids[i], targetId);
+        if (p) { p.unshift(n); return p; }
+      }
+      return null;
+    }
+
+    function expandPathTo(id) {
+      roots.forEach(r => collapseAllRec(r));
+      roots.forEach(r => { r.children = r._ch; }); // expand roots
+
+      let p = null;
+      for (const r of roots) {
+        p = findPathRec(r, id);
+        if (p) break;
+      }
+      if (p) {
+        p.forEach(function (n) { if (!n.children && n._ch) n.children = n._ch; });
+        return p[p.length - 1];
+      }
+      return null;
+    }
+
+    document.getElementById("btn-expand-all").addEventListener("click", function () {
+      roots.forEach(r => expandAllRec(r));
+      updateAll(roots[0]);
+      setTimeout(() => {
+        const t = d3.zoomIdentity.translate(width / 2 - root.x, 80).scale(0.6);
+        svg.transition().duration(700).call(zoom.transform, t);
+      }, 600);
+    });
+
+    document.getElementById("btn-collapse-all").addEventListener("click", function () {
+      roots.forEach(r => { collapseAllRec(r); r.children = r._ch; });
+      updateAll(roots[0]);
+      setTimeout(() => {
+        const t = d3.zoomIdentity.translate(width / 2 - root.x, 80).scale(0.8);
+        svg.transition().duration(700).call(zoom.transform, t);
+      }, 600);
+    });
+
+    // Init
+    roots.forEach(r => {
+      r.descendants().forEach(function (d) { if (d.depth > 1 && d.children) { d._ch = d.children; d.children = null; } });
+    });
+
+    function isAncestorOf(d, id) {
+      if (d.data.id === id) return true;
+      if (d.children) return d.children.some(c => isAncestorOf(c, id));
+      if (d._ch) return d._ch.some(c => isAncestorOf(c, id));
+      return false;
+    }
+
+    function expandTo(id) {
+      let n = null;
+      for (const r of roots) {
+        n = r.descendants().find(x => x.data.id === id);
+        if (n) break;
+      }
+      if (!n) {
+        roots.forEach(r => {
+          r.descendants().forEach(d => { if (d._ch && !d.children) { d.children = d._ch; } });
+        });
+        for (const r of roots) {
+          n = r.descendants().find(x => x.data.id === id);
+          if (n) break;
+        }
+        if (n) {
+          let p = n.parent;
+          while (p) { if (!p.children && p._ch) p.children = p._ch; p = p.parent; }
+        }
+        roots.forEach(r => {
+          r.descendants().forEach(d => { if (d.depth > 1 && d.children && !isAncestorOf(d, id)) { d._ch = d.children; d.children = null; } });
+        });
+      }
+    }
+
+    expandTo("ieyasu");
+    expandTo("kamatari"); // Default expand Fujiwara partially
+
+    expandPathTo("ieyasu");
+
+    roots.forEach(r => { r.x0 = 0; r.y0 = 0; });
+    updateAll(roots[0]);
+
+    // Ensure valid non-NaN coordinates for initial transform
+    const validNodes = root.descendants().filter(d => typeof d.x === 'number' && typeof d.y === 'number');
+    const tCenter = validNodes.find(d => d.data.id === 'tenji') || validNodes[0] || { x: 0, y: 0 };
+
+    const validOffset = {
+      x: isNaN(tCenter.x) ? 0 : tCenter.x,
+      y: isNaN(tCenter.y) ? 0 : tCenter.y
+    };
+
+    const initT = d3.zoomIdentity.translate(width / 2 - validOffset.x, height / 2 - validOffset.y).scale(0.8);
+    svg.call(zoom.transform, initT);
+
+  </script>
+</body>
